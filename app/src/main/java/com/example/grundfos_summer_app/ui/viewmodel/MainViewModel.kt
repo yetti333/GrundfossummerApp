@@ -15,7 +15,7 @@ data class UiState(
 	val status: EspStatus? = null,
 	val isLoading: Boolean = false,
 	val errorMessage: String? = null,
-	val baseUrl: String = "http://192.168.1.100"
+	val baseUrl: String = "http://192.168.0.130"
 )
 
 class MainViewModel : ViewModel() {
@@ -54,9 +54,6 @@ class MainViewModel : ViewModel() {
 		}
 	}
 
-	fun setBaseUrl(baseUrl: String) {
-		updateBaseUrl(baseUrl)
-	}
 
 	fun setMode(mode: String) {
 		viewModelScope.launch {
@@ -92,13 +89,13 @@ class MainViewModel : ViewModel() {
 
 	fun saveSettings(startTime: String, runMinutes: Int, feedbackTimeoutSec: Int) {
 		viewModelScope.launch {
-			repository.saveSettings(
-					startTime = startTime,
-					runMinutes = runMinutes,
-					feedbackTimeoutSec = feedbackTimeoutSec
-				)
-				.onSuccess { refreshStatus() }
-				.onFailure { setError(it) }
+			val result: Result<Unit> = repository.saveSettings(
+				startTime = startTime,
+				runMinutes = runMinutes,
+				feedbackTimeoutSec = feedbackTimeoutSec
+			)
+			result.onSuccess { refreshStatus() }
+			result.onFailure { setError(it) }
 		}
 	}
 

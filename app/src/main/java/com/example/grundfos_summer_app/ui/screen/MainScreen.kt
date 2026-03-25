@@ -109,9 +109,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 				item {
 					StatusCard(
 						mode = uiState.status?.mode ?: "–",
-						pumpRunning = uiState.status?.pumpRunning == true,
-						feedback = uiState.status?.feedback?.toString() ?: "–",
-						feedbackStable = uiState.status?.feedbackStable == true,
+						pumpRunning = uiState.status?.pump?.running == true,
+						feedback = uiState.status?.pump?.pulseCountLastMinute?.toString() ?: "–",
+						feedbackStable = uiState.status?.pump?.pulseOk == true,
 						bypass = uiState.status?.bypass == true,
 						wifiError = uiState.status?.errors?.wifi == true,
 						timeError = uiState.status?.errors?.time == true,
@@ -123,7 +123,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 				item {
 					ControlsCard(
 						mode = uiState.status?.mode,
-						pumpRunning = uiState.status?.pumpRunning == true,
+						pumpRunning = uiState.status?.pump?.running == true,
 						bypass = uiState.status?.bypass ?: false,
 						onModeSelected = viewModel::setMode,
 						onBypassChanged = viewModel::setBypass,
