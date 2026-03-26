@@ -2,7 +2,6 @@ package com.example.grundfos_summer_app
 
 import com.example.grundfos_summer_app.data.model.EspErrors
 import com.example.grundfos_summer_app.data.model.EspPumpStatus
-import com.example.grundfos_summer_app.data.model.EspSchedule
 import com.example.grundfos_summer_app.data.model.EspStatus
 import com.example.grundfos_summer_app.data.remote.EspApiService
 import com.example.grundfos_summer_app.data.repository.EspRepository
@@ -49,30 +48,12 @@ class EspRepositoryTest {
         assertEquals(listOf("{\"bypass\":true}", "{\"enabled\":true}"), api.bypassBodies)
     }
 
-    @Test
-    fun saveSettings_stopsAfterFirstSuccessfulPayload() = runBlocking {
-        val api = FakeEspApiService(
-            scheduleResponses = mutableListOf(Response.success(Unit))
-        )
-        val repository = EspRepository(api)
-
-        val result = repository.saveSettings("19:00", 5, 60)
-
-        assertTrue(result.isSuccess)
-        assertEquals(
-            listOf("{\"start_hour\":19,\"start_minute\":0,\"duration_minutes\":5}"),
-            api.scheduleBodies
-        )
-    }
-
     private class FakeEspApiService(
         private val modeResponses: MutableList<Response<Unit>> = mutableListOf(Response.success(Unit)),
-        private val bypassResponses: MutableList<Response<Unit>> = mutableListOf(Response.success(Unit)),
-        private val scheduleResponses: MutableList<Response<Unit>> = mutableListOf(Response.success(Unit))
+        private val bypassResponses: MutableList<Response<Unit>> = mutableListOf(Response.success(Unit))
     ) : EspApiService {
         val modeBodies = mutableListOf<String>()
         val bypassBodies = mutableListOf<String>()
-        val scheduleBodies = mutableListOf<String>()
 
         override suspend fun getStatus(): EspStatus = EspStatus(
             state = "AUTO_MODE",
@@ -86,8 +67,7 @@ class EspRepositoryTest {
                 pulseFrequencyHz = 0,
                 pulseCountLastMinute = 0,
                 pulseStability = 0
-            ),
-            schedule = EspSchedule(19, 0, 5)
+            )
         )
 
         override suspend fun setMode(body: RequestBody): Response<Unit> {
@@ -104,10 +84,7 @@ class EspRepositoryTest {
 
         override suspend fun pumpStop(): Response<Unit> = Response.success(Unit)
 
-        override suspend fun saveSchedule(body: RequestBody): Response<Unit> {
-            scheduleBodies += readBody(body)
-            return scheduleResponses.removeAt(0)
-        }
+        override suspend fun resetErrors(): Response<Unit> = Response.success(Unit)
     }
 
     companion object {
@@ -120,4 +97,3 @@ class EspRepositoryTest {
         }
     }
 }
-

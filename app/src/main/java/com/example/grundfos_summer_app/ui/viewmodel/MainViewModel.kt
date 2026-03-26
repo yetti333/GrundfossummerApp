@@ -66,6 +66,14 @@ class MainViewModel : ViewModel() {
 		}
 	}
 
+	fun resetErrors() {
+		viewModelScope.launch {
+			repository.resetErrors()
+				.onSuccess { refreshStatus() }
+				.onFailure { setError(it) }
+		}
+	}
+
 	fun saveSettings(startTime: String, runMinutes: Int, feedbackTimeoutSec: Int) {
 		viewModelScope.launch {
 			val result: Result<Unit> = repository.saveSettings(

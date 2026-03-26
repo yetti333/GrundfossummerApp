@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
@@ -28,7 +27,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -42,16 +40,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,6 +56,7 @@ import com.example.grundfos_summer_app.ui.viewmodel.MainViewModel
 @Composable
 fun MainScreen(
     onNavigateToSettings: () -> Unit,
+    onNavigateToErrors: () -> Unit,
     viewModel: MainViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -80,13 +75,8 @@ fun MainScreen(
         }
     }
 
-    var startTime by rememberSaveable { mutableStateOf("") }
-    var runMinutesText by rememberSaveable { mutableStateOf("5") }
-    var feedbackTimeoutText by rememberSaveable { mutableStateOf("60") }
-
     // Handlery pro nová tlačítka
     val onConnect = { /* TODO */ }
-    val onErrors = { /* TODO */ }
 
     Scaffold(
         snackbarHost = {
@@ -151,7 +141,7 @@ fun MainScreen(
                                     icon = Icons.Sharp.Warning,
                                     label = "Chyby",
                                     color = Color(0xFFD84315), // varovná oranžová
-                                    onClick = onErrors,
+                                    onClick = onNavigateToErrors,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -182,23 +172,6 @@ fun MainScreen(
                         onBypassChanged = viewModel::setBypass,
                         onPumpStart = viewModel::pumpStart,
                         onPumpStop = viewModel::pumpStop,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
-
-                item {
-                    PlanCard(
-                        startTime = startTime,
-                        runMinutesText = runMinutesText,
-                        feedbackTimeoutText = feedbackTimeoutText,
-                        onStartTimeChanged = { startTime = it },
-                        onRunMinutesChanged = { runMinutesText = it },
-                        onFeedbackTimeoutChanged = { feedbackTimeoutText = it },
-                        onSave = {
-                            val runMinutes = runMinutesText.toIntOrNull() ?: 5
-                            val feedbackTimeout = feedbackTimeoutText.toIntOrNull() ?: 60
-                            viewModel.saveSettings(startTime, runMinutes, feedbackTimeout)
-                        },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
@@ -349,59 +322,6 @@ private fun ControlsCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Zastavit čerpadlo")
-            }
-        }
-    }
-}
-
-@Composable
-private fun PlanCard(
-    startTime: String,
-    runMinutesText: String,
-    feedbackTimeoutText: String,
-    onStartTimeChanged: (String) -> Unit,
-    onRunMinutesChanged: (String) -> Unit,
-    onFeedbackTimeoutChanged: (String) -> Unit,
-    onSave: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text("Plán spouštění", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-            OutlinedTextField(
-                value = startTime,
-                onValueChange = onStartTimeChanged,
-                label = { Text("Čas spuštění (HH:MM)") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = runMinutesText,
-                onValueChange = onRunMinutesChanged,
-                label = { Text("Doba běhu (min)") },
-                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = feedbackTimeoutText,
-                onValueChange = onFeedbackTimeoutChanged,
-                label = { Text("Timeout zpětné vazby (s)") },
-                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Button(
-                onClick = onSave,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Uložit")
             }
         }
     }

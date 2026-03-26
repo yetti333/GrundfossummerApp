@@ -3,7 +3,6 @@ package com.example.grundfos_summer_app.ui.screen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -51,26 +50,15 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Pomocné proměnné pro formátování času z EspSchedule (startHour:startMinute)
-    val initialStartTime = uiState.status?.schedule?.let { 
-        "${it.startHour.toString().padStart(2, '0')}:${it.startMinute.toString().padStart(2, '0')}"
-    } ?: ""
-    val initialRunMinutes = uiState.status?.schedule?.durationMinutes?.toString() ?: "5"
-
-    var startTime by rememberSaveable { mutableStateOf(initialStartTime) }
-    var runMinutesText by rememberSaveable { mutableStateOf(initialRunMinutes) }
+    var startTime by rememberSaveable { mutableStateOf("") }
+    var runMinutesText by rememberSaveable { mutableStateOf("5") }
     var feedbackTimeoutText by rememberSaveable { mutableStateOf("60") }
 
-    // Aktualizace polí při načtení dat, pokud jsou pole prázdná nebo nebyla ještě změněna uživatelem
-    // Používáme LaunchedEffect, aby se data přepsala pouze při první úspěšné odpovědi od ESP
-    LaunchedEffect(uiState.status) {
-        uiState.status?.schedule?.let {
-            if (startTime.isEmpty()) {
-                startTime = "${it.startHour.toString().padStart(2, '0')}:${it.startMinute.toString().padStart(2, '0')}"
-            }
-            if (runMinutesText == "5" || runMinutesText.isEmpty()) {
-                runMinutesText = it.durationMinutes.toString()
-            }
+    // Synchronizace polí se stavem ze serveru při načtení
+    LaunchedEffect(uiState.status?.schedule) {
+        uiState.status?.schedule?.let { schedule ->
+            startTime = "%02d:%02d".format(schedule.startHour, schedule.startMinute)
+            runMinutesText = schedule.durationMinutes.toString()
         }
     }
 
@@ -108,58 +96,80 @@ fun SettingsScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(16.dp)
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)
             ) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text("Plán spouštění", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-                            OutlinedTextField(
-                                value = startTime,
-                                onValueChange = { startTime = it },
-                                label = { Text("Čas spuštění (HH:MM)") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            OutlinedTextField(
-                                value = runMinutesText,
-                                onValueChange = { runMinutesText = it },
-                                label = { Text("Doba běhu (min)") },
-                                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            OutlinedTextField(
-                                value = feedbackTimeoutText,
-                                onValueChange = { feedbackTimeoutText = it },
-                                label = { Text("Timeout zpětné vazby (s)") },
-                                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Button(
-                                onClick = {
-                                    val runMinutes = runMinutesText.toIntOrNull() ?: 5
-                                    val feedbackTimeout = feedbackTimeoutText.toIntOrNull() ?: 60
-                                    viewModel.saveSettings(startTime, runMinutes, feedbackTimeout)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Uložit")
-                            }
+                    PlanCard(
+                        startTime = startTime,
+                        runMinutesText = runMinutesText,
+                        feedbackTimeoutText = feedbackTimeoutText,
+                        onStartTimeChanged = { startTime = it },
+                        onRunMinutesChanged = { runMinutesText = it },
+                        onFeedbackTimeoutChanged = { feedbackTimeoutText = it },
+                        onSave = {
+                            val runMinutes = runMinutesText.toIntOrNull() ?: 5
+                            val feedbackTimeout = feedbackTimeoutText.toIntOrNull() ?: 60
+                            viewModel.saveSettings(startTime, runMinutes, feedbackTimeout)
                         }
-                    }
+                    )
                 }
             }
 
             if (uiState.isLoading && uiState.status == null) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlanCard(
+    startTime: String,
+    runMinutesText: String,
+    feedbackTimeoutText: String,
+    onStartTimeChanged: (String) -> Unit,
+    onRunMinutesChanged: (String) -> Unit,
+    onFeedbackTimeoutChanged: (String) -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Plán spouštění", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+            OutlinedTextField(
+                value = startTime,
+                onValueChange = onStartTimeChanged,
+                label = { Text("Čas spuštění (HH:MM)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = runMinutesText,
+                onValueChange = onRunMinutesChanged,
+                label = { Text("Doba běhu (min)") },
+                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = feedbackTimeoutText,
+                onValueChange = onFeedbackTimeoutChanged,
+                label = { Text("Timeout zpětné vazby (s)") },
+                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = onSave,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Uložit")
             }
         }
     }

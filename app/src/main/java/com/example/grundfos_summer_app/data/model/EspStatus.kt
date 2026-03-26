@@ -29,5 +29,5 @@ data class EspStatus(
     val bypass: Boolean,
     val errors: EspErrors,
     val pump: EspPumpStatus,
-    val schedule: EspSchedule
+    val schedule: EspSchedule? = null
 )

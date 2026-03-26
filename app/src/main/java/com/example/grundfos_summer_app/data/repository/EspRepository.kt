@@ -80,7 +80,16 @@ class EspRepository(private val api: EspApiService) {
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
+    suspend fun resetErrors(): Result<Unit> {
+        return try {
+            handleUnitResponse(api.resetErrors())
+        } catch (e: IOException) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun saveSettings(
         startTime: String,
         runMinutes: Int,
@@ -139,7 +148,6 @@ class EspRepository(private val api: EspApiService) {
         return if (response.isSuccessful) {
             Result.success(Unit)
         } else {
-            // Přidáme tělo chybové odpovědi ESP32 – pomůže zjistit přesnou příčinu chyby
             val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
             val msg = if (!errorBody.isNullOrBlank()) {
                 "HTTP ${response.code()}: $errorBody"

@@ -25,4 +25,7 @@ interface EspApiService {
 
     @POST("set/schedule")
     suspend fun saveSchedule(@Body body: RequestBody): Response<Unit>
+
+    @POST("reset/errors")
+    suspend fun resetErrors(): Response<Unit>
 }

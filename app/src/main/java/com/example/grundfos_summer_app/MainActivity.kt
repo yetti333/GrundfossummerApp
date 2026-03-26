@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.grundfos_summer_app.ui.screen.MainScreen
 import com.example.grundfos_summer_app.ui.screen.SettingsScreen
+import com.example.grundfos_summer_app.ui.screen.ErrorScreen
 import com.example.grundfos_summer_app.ui.theme.GrundfosControllerTheme
 
 class MainActivity : ComponentActivity() {
@@ -31,11 +32,17 @@ fun AppNavigation() {
     NavHost(navController = navController, startDestination = "main") {
         composable("main") {
             MainScreen(
-                onNavigateToSettings = { navController.navigate("settings") }
+                onNavigateToSettings = { navController.navigate("settings") },
+                onNavigateToErrors = { navController.navigate("errors") }
             )
         }
         composable("settings") {
             SettingsScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable("errors") {
+            ErrorScreen(
                 onBack = { navController.popBackStack() }
             )
         }
