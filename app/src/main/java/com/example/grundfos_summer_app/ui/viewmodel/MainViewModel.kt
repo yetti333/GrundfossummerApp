@@ -14,16 +14,15 @@ import kotlinx.coroutines.launch
 data class UiState(
 	val status: EspStatus? = null,
 	val isLoading: Boolean = false,
-	val errorMessage: String? = null,
-	val baseUrl: String = "http://192.168.0.130"
+	val errorMessage: String? = null
 )
 
 class MainViewModel : ViewModel() {
 	private val _uiState = MutableStateFlow(UiState())
 	val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-	private var repository: EspRepository = EspRepository(
-		RetrofitProvider.buildRetrofit(formatBaseUrl(_uiState.value.baseUrl))
+	private val repository: EspRepository = EspRepository(
+		RetrofitProvider.buildRetrofit("http://192.168.0.130/")
 	)
 
 	init {
@@ -34,26 +33,6 @@ class MainViewModel : ViewModel() {
 			}
 		}
 	}
-
-	fun updateBaseUrl(url: String) {
-		val updatedBaseUrl = url.trim()
-		if (updatedBaseUrl == _uiState.value.baseUrl) {
-			return
-		}
-
-		repository = EspRepository(
-			RetrofitProvider.buildRetrofit(formatBaseUrl(updatedBaseUrl))
-		)
-		_uiState.value = _uiState.value.copy(
-			baseUrl = updatedBaseUrl,
-			status = null
-		)
-
-		viewModelScope.launch {
-			refreshStatus()
-		}
-	}
-
 
 	fun setMode(mode: String) {
 		viewModelScope.launch {
@@ -129,9 +108,4 @@ class MainViewModel : ViewModel() {
 			isLoading = false
 		)
 	}
-
-	private fun formatBaseUrl(baseUrl: String): String {
-		return if (baseUrl.endsWith('/')) baseUrl else "$baseUrl/"
-	}
 }
-
