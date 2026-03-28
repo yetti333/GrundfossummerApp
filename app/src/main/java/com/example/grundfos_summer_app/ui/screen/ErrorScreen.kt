@@ -72,7 +72,7 @@ fun ErrorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Chybová hlášení") },
+                title = { Text("Zprávy a logy") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zpět")
@@ -97,7 +97,7 @@ fun ErrorScreen(
                 item {
                     ErrorItem(
                         title = "WiFi Připojení",
-                        description = "Chyba připojení k lokální síti nebo internetu.",
+                        description = "Stav připojení k lokální síti nebo internetu.",
                         isError = errors?.wifi == true
                     )
                 }
@@ -105,7 +105,7 @@ fun ErrorScreen(
                 item {
                     ErrorItem(
                         title = "Synchronizace času",
-                        description = "Nepodařilo se získat aktuální čas z NTP serveru.",
+                        description = "Stav získávání aktuálního času z NTP serveru.",
                         isError = errors?.time == true
                     )
                 }
@@ -113,7 +113,7 @@ fun ErrorScreen(
                 item {
                     ErrorItem(
                         title = "Zpětná vazba čerpadla",
-                        description = "Čerpadlo neběží nebo nedává pulzy zpětné vazby.",
+                        description = "Diagnostika běhu čerpadla a pulzů zpětné vazby.",
                         isError = errors?.pump == true
                     )
                 }
@@ -124,10 +124,10 @@ fun ErrorScreen(
                         onClick = { viewModel.resetErrors() },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFD84315) // Varovná oranžová z MainScreen
+                            containerColor = Color(0xFF455A64) // Ladí s novým tlačítkem Zprávy
                         )
                     ) {
-                        Text("Resetovat chyby", fontWeight = FontWeight.Bold)
+                        Text("Resetovat stav", fontWeight = FontWeight.Bold)
                     }
                 }
             }

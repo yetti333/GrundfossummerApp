@@ -15,12 +15,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.sharp.Wifi
+import androidx.compose.material.icons.sharp.Description
 import androidx.compose.material.icons.sharp.Settings
-import androidx.compose.material.icons.sharp.Warning
+import androidx.compose.material.icons.sharp.Wifi
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,7 +57,7 @@ import com.example.grundfos_summer_app.ui.viewmodel.MainViewModel
 @Composable
 fun MainScreen(
     onNavigateToSettings: () -> Unit,
-    onNavigateToErrors: () -> Unit,
+    onNavigateToMessages: () -> Unit,
     viewModel: MainViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -136,12 +137,12 @@ fun MainScreen(
                                     onClick = onNavigateToSettings,
                                     modifier = Modifier.weight(1f)
                                 )
-                                // Chyby
+                                // Zprávy (dříve Chyby)
                                 TechnicalButton(
-                                    icon = Icons.Sharp.Warning,
-                                    label = "Chyby",
-                                    color = Color(0xFFD84315), // varovná oranžová
-                                    onClick = onNavigateToErrors,
+                                    icon = Icons.Sharp.Description,
+                                    label = "Zprávy",
+                                    color = Color(0xFF455A64), // modrošedá pro logy/zprávy
+                                    onClick = onNavigateToMessages,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -151,21 +152,26 @@ fun MainScreen(
 
                 item {
                     StatusCard(
-                        mode = uiState.status?.mode ?: "–",
-                        pumpRunning = uiState.status?.pump?.running == true,
-                        feedback = uiState.status?.pump?.pulseCountLastMinute?.toString() ?: "–",
-                        feedbackStable = uiState.status?.pump?.pulseOk == true,
+                        mode = if (uiState.isConnectionLost) "ODPOJENO" else (uiState.status?.mode ?: "–"),
+                        pumpRunning = if (uiState.isConnectionLost) false else (uiState.status?.pump?.running == true),
+                        feedback = if (uiState.isConnectionLost) "???" else (uiState.status?.pump?.pulseCountLastMinute?.toString() ?: "–"),
+                        feedbackStable = if (uiState.isConnectionLost) false else (uiState.status?.pump?.pulseOk == true),
                         bypass = uiState.status?.bypass == true,
-                        wifiError = uiState.status?.errors?.wifi == true,
+                        wifiError = uiState.isConnectionLost || (uiState.status?.errors?.wifi == true),
                         timeError = uiState.status?.errors?.time == true,
                         pumpError = uiState.status?.errors?.pump == true,
+                        onWifiErrorClick = {
+                            if (uiState.isConnectionLost) {
+                                viewModel.resetConnectionTimeout()
+                            }
+                        },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
 
                 item {
                     ControlsCard(
-                        mode = uiState.status?.mode,
+                        mode = if (uiState.isConnectionLost) null else uiState.status?.mode,
                         pumpRunning = uiState.status?.pump?.running == true,
                         bypass = uiState.status?.bypass ?: false,
                         onModeSelected = viewModel::setMode,
@@ -233,6 +239,7 @@ private fun StatusCard(
     wifiError: Boolean,
     timeError: Boolean,
     pumpError: Boolean,
+    onWifiErrorClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
@@ -251,7 +258,11 @@ private fun StatusCard(
 
             Text("Chyby:", style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ErrorChip(label = "WiFi", isError = wifiError)
+                ErrorChip(
+                    label = "WiFi", 
+                    isError = wifiError,
+                    onClick = onWifiErrorClick
+                )
                 ErrorChip(label = "Čas", isError = timeError)
                 ErrorChip(label = "Čerpadlo", isError = pumpError)
             }
@@ -272,7 +283,7 @@ private fun ControlsCard(
     modifier: Modifier = Modifier
 ) {
     val options = listOf("AUTO", "MANUAL")
-    val selectedIndex = options.indexOf(mode).coerceAtLeast(0)
+    val selectedIndex = if (mode == null) -1 else options.indexOf(mode).coerceAtLeast(0)
 
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -288,7 +299,8 @@ private fun ControlsCard(
                     SegmentedButton(
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                         onClick = { onModeSelected(label) },
-                        selected = selectedIndex == index
+                        selected = selectedIndex == index,
+                        enabled = mode != null
                     ) {
                         Text(label)
                     }
@@ -304,22 +316,23 @@ private fun ControlsCard(
                 Switch(
                     checked = bypass,
                     onCheckedChange = onBypassChanged,
-                    enabled = !pumpRunning
+                    enabled = mode != null && !pumpRunning
                 )
             }
 
             Button(
                 onClick = onPumpStart,
-                enabled = mode == "MANUAL" && !pumpRunning,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = mode == "MANUAL" && !pumpRunning
             ) {
                 Text("Spustit čerpadlo")
             }
 
             Button(
                 onClick = onPumpStop,
-                enabled = pumpRunning,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = mode == "MANUAL" && pumpRunning,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
                 Text("Zastavit čerpadlo")
             }
@@ -331,36 +344,47 @@ private fun ControlsCard(
 private fun InfoRow(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(label)
-        Text(value)
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+        Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun IconRow(label: String, isActive: Boolean) {
+private fun IconRow(label: String, active: Boolean) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label)
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
         Icon(
-            imageVector = if (isActive) Icons.Default.Check else Icons.Default.Remove,
+            imageVector = if (active) Icons.Default.Check else Icons.Default.Remove,
             contentDescription = null,
-            tint = if (isActive) Color(0xFF2E7D32) else Color.Gray
+            tint = if (active) Color(0xFF388E3C) else Color.Gray,
+            modifier = Modifier.size(20.dp)
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ErrorChip(label: String, isError: Boolean) {
-    val containerColor = if (isError) Color(0xFFB71C1C) else Color(0xFF1B5E20)
+private fun ErrorChip(
+    label: String, 
+    isError: Boolean,
+    onClick: () -> Unit = {}
+) {
     AssistChip(
-        onClick = {},
-        label = { Text(label, color = Color.White) },
-        colors = AssistChipDefaults.assistChipColors(containerColor = containerColor)
+        onClick = onClick,
+        label = { Text(label, fontSize = 11.sp) },
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = if (isError) Color(0xFFFDECEA) else Color(0xFFF5F5F5),
+            labelColor = if (isError) Color(0xFFD32F2F) else Color.Gray
+        ),
+        border = AssistChipDefaults.assistChipBorder(
+            enabled = true,
+            borderColor = if (isError) Color(0xFFEF9A9A) else Color.LightGray
+        )
     )
 }

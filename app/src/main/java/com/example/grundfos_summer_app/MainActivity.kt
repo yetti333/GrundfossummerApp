@@ -33,7 +33,7 @@ fun AppNavigation() {
         composable("main") {
             MainScreen(
                 onNavigateToSettings = { navController.navigate("settings") },
-                onNavigateToErrors = { navController.navigate("errors") }
+                onNavigateToMessages = { navController.navigate("messages") }
             )
         }
         composable("settings") {
@@ -41,7 +41,7 @@ fun AppNavigation() {
                 onBack = { navController.popBackStack() }
             )
         }
-        composable("errors") {
+        composable("messages") {
             ErrorScreen(
                 onBack = { navController.popBackStack() }
             )

@@ -14,12 +14,16 @@ import kotlinx.coroutines.launch
 data class UiState(
 	val status: EspStatus? = null,
 	val isLoading: Boolean = false,
-	val errorMessage: String? = null
+	val errorMessage: String? = null,
+	val isConnectionLost: Boolean = false
 )
 
 class MainViewModel : ViewModel() {
 	private val _uiState = MutableStateFlow(UiState())
 	val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+	private var retryCount = 0
+	private val maxRetries = 10
 
 	private val repository: EspRepository = EspRepository(
 		RetrofitProvider.buildRetrofit("http://192.168.0.130/")
@@ -74,6 +78,14 @@ class MainViewModel : ViewModel() {
 		}
 	}
 
+	fun resetConnectionTimeout() {
+		retryCount = 0
+		_uiState.value = _uiState.value.copy(
+			isConnectionLost = false,
+			errorMessage = null
+		)
+	}
+
 	fun saveSettings(startTime: String, runMinutes: Int, feedbackTimeoutSec: Int) {
 		viewModelScope.launch {
 			val result: Result<Unit> = repository.saveSettings(
@@ -95,17 +107,21 @@ class MainViewModel : ViewModel() {
 
 		repository.getStatus()
 			.onSuccess { status ->
+				retryCount = 0
 				_uiState.value = _uiState.value.copy(
 					status = status,
 					isLoading = false,
-					errorMessage = null
+					errorMessage = null,
+					isConnectionLost = false
 				)
 			}
-
 			.onFailure { throwable ->
+				retryCount++
+				val isLost = retryCount >= maxRetries
 				_uiState.value = _uiState.value.copy(
 					isLoading = false,
-					errorMessage = throwable.message
+					errorMessage = if (isLost) "Připojení k ESP ztraceno (10 neúspěšných pokusů)" else throwable.message,
+					isConnectionLost = isLost
 				)
 			}
 	}
