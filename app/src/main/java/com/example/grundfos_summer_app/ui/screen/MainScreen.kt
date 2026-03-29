@@ -1,15 +1,6 @@
 package com.example.grundfos_summer_app.ui.screen
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,30 +9,8 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.sharp.Description
 import androidx.compose.material.icons.sharp.Settings
 import androidx.compose.material.icons.sharp.Wifi
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -76,7 +45,11 @@ fun MainScreen(
     }
 
     // Handlery pro nová tlačítka
-    val onConnect = { /* TODO */ }
+    val onConnect = {
+        if (uiState.isConnectionLost) {
+            viewModel.resetConnectionTimeout()
+        }
+    }
 
     Scaffold(
         snackbarHost = {
@@ -124,7 +97,7 @@ fun MainScreen(
                                 TechnicalButton(
                                     icon = Icons.Sharp.Wifi,
                                     label = "Připojení",
-                                    color = Color(0xFF1565C0), // industriální modrá
+                                    color = if (uiState.isConnectionLost) MaterialTheme.colorScheme.error else Color(0xFF1565C0),
                                     onClick = onConnect,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -164,6 +137,7 @@ fun MainScreen(
                                 viewModel.resetConnectionTimeout()
                             }
                         },
+                        onPumpErrorClick = viewModel::resetPumpError,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
@@ -239,6 +213,7 @@ private fun StatusCard(
     timeError: Boolean,
     pumpError: Boolean,
     onWifiErrorClick: () -> Unit,
+    onPumpErrorClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
@@ -263,7 +238,11 @@ private fun StatusCard(
                     onClick = onWifiErrorClick
                 )
                 ErrorChip(label = "Čas", isError = timeError)
-                ErrorChip(label = "Čerpadlo", isError = pumpError)
+                ErrorChip(
+                    label = "Čerpadlo", 
+                    isError = pumpError,
+                    onClick = onPumpErrorClick
+                )
             }
         }
     }

@@ -34,7 +34,7 @@ class MainViewModel : ViewModel() {
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private var retryCount = 0
-    private val maxRetries = 5
+    private val maxRetries = 1
     private var lastWifiError = false
     private var lastTimeError = false
     private var lastPumpError = false
@@ -57,7 +57,7 @@ class MainViewModel : ViewModel() {
         _uiState.update { currentState ->
             val currentLogs = currentState.logs.toMutableList()
             currentLogs.add(0, newLog)
-            if (currentLogs.size > 10) {
+            if (currentLogs.size > 15) {
                 currentLogs.removeAt(currentLogs.size - 1)
             }
             currentState.copy(logs = currentLogs)
@@ -143,6 +143,20 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun resetPumpError() {
+        viewModelScope.launch {
+            repository.resetPumpError()
+                .onSuccess { 
+                    addLog("Reset chyby čerpadla", false)
+                    refreshStatus() 
+                }
+                .onFailure { 
+                    addLog("Chyba při resetu čerpadla: ${it.message}", true)
+                    setError(it) 
+                }
+        }
+    }
+
     fun resetConnectionTimeout() {
         retryCount = 0
         _uiState.update { it.copy(
@@ -160,7 +174,7 @@ class MainViewModel : ViewModel() {
                 feedbackTimeoutSec = feedbackTimeoutSec
             )
             result.onSuccess { 
-                addLog("Nastavení uloženo", false)
+                addLog("Změna nastavení plánu spouštění", false)
                 refreshStatus() 
             }
             result.onFailure { 
@@ -211,7 +225,7 @@ class MainViewModel : ViewModel() {
 
                 _uiState.update { it.copy(
                     isLoading = false,
-                    errorMessage = if (isLost) "Připojení k ESP ztraceno ($maxRetries neúspěšných pokusů)" else throwable.message,
+                    errorMessage = if (isLost) "Připojení k ESP ztraceno" else throwable.message,
                     isConnectionLost = isLost
                 )}
             }

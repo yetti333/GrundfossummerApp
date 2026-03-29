@@ -77,12 +77,6 @@ fun ErrorScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            Text(
-                text = "Posledních 10 událostí",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)

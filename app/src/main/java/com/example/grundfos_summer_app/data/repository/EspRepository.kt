@@ -90,6 +90,16 @@ class EspRepository(private val api: EspApiService) {
         }
     }
 
+    suspend fun resetPumpError(): Result<Unit> {
+        return try {
+            handleUnitResponse(api.resetPumpError(createJsonBody("{}")))
+        } catch (e: IOException) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun saveSettings(
         startTime: String,
         runMinutes: Int,

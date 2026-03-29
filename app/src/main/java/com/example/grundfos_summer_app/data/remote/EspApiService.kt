@@ -28,4 +28,7 @@ interface EspApiService {
 
     @POST("reset/errors")
     suspend fun resetErrors(): Response<Unit>
+
+    @POST("pump/error-reset")
+    suspend fun resetPumpError(@Body body: RequestBody): Response<Unit>
 }
