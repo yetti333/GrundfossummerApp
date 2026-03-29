@@ -84,6 +84,8 @@ class EspRepositoryTest {
 
         override suspend fun pumpStop(): Response<Unit> = Response.success(Unit)
 
+        override suspend fun saveSchedule(body: RequestBody): Response<Unit> = Response.success(Unit)
+
         override suspend fun resetErrors(): Response<Unit> = Response.success(Unit)
     }
 

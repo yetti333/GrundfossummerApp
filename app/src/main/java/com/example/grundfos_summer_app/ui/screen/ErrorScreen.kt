@@ -1,5 +1,7 @@
 package com.example.grundfos_summer_app.ui.screen
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,189 +14,196 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.grundfos_summer_app.ui.viewmodel.LogEntry
 import com.example.grundfos_summer_app.ui.viewmodel.MainViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private val GrundfosRed = Color(0xFFE4002B)
+private val GrundfosDarkGrey = Color(0xFF455A64)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ErrorScreen(
     onBack: () -> Unit,
-    viewModel: MainViewModel = viewModel()
+    viewModel: MainViewModel
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(uiState.errorMessage) {
-        val message = uiState.errorMessage ?: return@LaunchedEffect
-        val result = snackbarHostState.showSnackbar(
-            message = message,
-            actionLabel = "OK",
-            withDismissAction = true,
-            duration = SnackbarDuration.Short
-        )
-        if (result == SnackbarResult.Dismissed || result == SnackbarResult.ActionPerformed) {
-            viewModel.clearErrorMessage()
-        }
-    }
+    val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Zprávy a logy") },
+                title = { Text("Logy a události") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zpět")
                     }
                 }
             )
-        },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+        }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .padding(16.dp)
         ) {
+            Text(
+                text = "Posledních 10 událostí",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(16.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .border(1.dp, Color.LightGray, RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp)),
+                contentPadding = PaddingValues(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val errors = uiState.status?.errors
-                
-                item {
-                    ErrorItem(
-                        title = "WiFi Připojení",
-                        description = "Stav připojení k lokální síti nebo internetu.",
-                        isError = errors?.wifi == true
-                    )
-                }
-
-                item {
-                    ErrorItem(
-                        title = "Synchronizace času",
-                        description = "Stav získávání aktuálního času z NTP serveru.",
-                        isError = errors?.time == true
-                    )
-                }
-
-                item {
-                    ErrorItem(
-                        title = "Zpětná vazba čerpadla",
-                        description = "Diagnostika běhu čerpadla a pulzů zpětné vazby.",
-                        isError = errors?.pump == true
-                    )
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = { viewModel.resetErrors() },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF455A64) // Ladí s novým tlačítkem Zprávy
+                if (uiState.logs.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Žádné záznamy", color = Color.Gray)
+                        }
+                    }
+                } else {
+                    items(uiState.logs, key = { it.id }) { log ->
+                        LogItem(
+                            log = log,
+                            isSelected = uiState.selectedLog?.id == log.id,
+                            onTap = { viewModel.selectLog(log) },
+                            timeStr = dateFormat.format(Date(log.timestamp))
                         )
-                    ) {
-                        Text("Resetovat stav", fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            if (uiState.isLoading && uiState.status == null) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { viewModel.clearLogs() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = GrundfosDarkGrey
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    Text("SMAZAT VŠE")
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ErrorItem(
-    title: String,
-    description: String,
-    isError: Boolean
+private fun LogItem(
+    log: LogEntry,
+    isSelected: Boolean,
+    onTap: () -> Unit,
+    timeStr: String
 ) {
+    val backgroundColor = if (log.isError) {
+        if (isSelected) GrundfosRed.copy(alpha = 0.6f) else GrundfosRed
+    } else {
+        if (isSelected) Color.Yellow.copy(alpha = 0.6f) else Color.Yellow
+    }
+
+    val contentColor = if (log.isError) {
+        Color.White
+    } else {
+        Color.Black
+    }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onTap() }
+            .border(
+                width = if (isSelected) 2.dp else 0.dp,
+                color = if (isSelected) GrundfosDarkGrey else Color.Transparent,
+                shape = RoundedCornerShape(8.dp)
+            ),
         colors = CardDefaults.cardColors(
-            containerColor = if (isError) Color(0xFFFFF1F0) else Color(0xFFF1F8E9)
-        )
+            containerColor = backgroundColor
+        ),
+        shape = RoundedCornerShape(8.dp)
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (isError) Icons.Default.Error else Icons.Default.CheckCircle,
+                imageVector = if (log.isError) Icons.Default.Warning else Icons.Default.Info,
                 contentDescription = null,
-                tint = if (isError) Color(0xFFD32F2F) else Color(0xFF388E3C),
-                modifier = Modifier.size(32.dp)
+                tint = contentColor,
+                modifier = Modifier.size(24.dp)
             )
             
-            Column(
-                modifier = Modifier
-                    .padding(start = 16.dp)
-                    .weight(1f)
-            ) {
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (log.isError) "CHYBA" else "INFO",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Black,
+                        color = contentColor
+                    )
+                    Text(
+                        text = timeStr,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f)
+                    )
+                }
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isError) Color(0xFFB71C1C) else Color(0xFF1B5E20)
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.DarkGray
-                )
-            }
-            
-            if (isError) {
-                Text(
-                    text = "CHYBA",
-                    color = Color(0xFFD32F2F),
-                    fontWeight = FontWeight.Black,
-                    fontSize = 12.sp
-                )
-            } else {
-                Text(
-                    text = "OK",
-                    color = Color(0xFF388E3C),
-                    fontWeight = FontWeight.Black,
-                    fontSize = 12.sp
+                    text = log.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (log.isError) FontWeight.Bold else FontWeight.Normal,
+                    color = contentColor
                 )
             }
         }
