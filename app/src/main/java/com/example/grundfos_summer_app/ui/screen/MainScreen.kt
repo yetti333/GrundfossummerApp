@@ -128,8 +128,20 @@ fun MainScreen(
                 }
 
                 item {
+                    val displayMode = if (uiState.isConnectionLost) "ODPOJENO" else {
+                        val baseMode = uiState.status?.mode ?: "–"
+                        uiState.status?.let { status ->
+                            if (baseMode == "AUTO" && status.schedule != null) {
+                                val schedule = status.schedule
+                                "AUTO (${schedule.startHour.toString().padStart(2, '0')}:${schedule.startMinute.toString().padStart(2, '0')})"
+                            } else {
+                                baseMode
+                            }
+                        } ?: baseMode
+                    }
                     StatusCard(
-                        mode = if (uiState.isConnectionLost) "ODPOJENO" else (uiState.status?.mode ?: "–"),
+                        mode = displayMode,
+                        baseMode = if (uiState.isConnectionLost) "ODPOJENO" else (uiState.status?.mode ?: "–"),
                         pumpRunning = if (uiState.isConnectionLost) false else (uiState.status?.pump?.running == true),
                         feedback = if (uiState.isConnectionLost) "???" else (uiState.status?.pump?.pulseCountLastMinute?.toString() ?: "–"),
                         feedbackStable = if (uiState.isConnectionLost) false else (uiState.status?.pump?.pulseOk == true),
@@ -226,6 +238,7 @@ private fun TechnicalButton(
 @Composable
 private fun StatusCard(
     mode: String,
+    baseMode: String,
     pumpRunning: Boolean,
     feedback: String,
     feedbackStable: Boolean,
@@ -245,7 +258,7 @@ private fun StatusCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("Stav", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            InfoRow("Režim:", mode, valueColor = when(mode) {
+            InfoRow("Režim:", mode, valueColor = when(baseMode) {
                 "AUTO" -> if (pumpError) Color.Red else Color(0xFF388E3C)
                 "MANUAL" -> Color(0xFF1565C0)
                 else -> Color.Unspecified
