@@ -6,24 +6,26 @@ import com.example.grundfos_summer_app.data.model.EspSchedule
 import com.example.grundfos_summer_app.data.remote.EspApiService
 import com.google.gson.Gson
 import java.io.IOException
+import java.net.URI
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import retrofit2.Response
 
 class EspRepository(
-    private val api: EspApiService,
-    private val provisioningApi: EspApiService? = null
+    api: EspApiService,
+    private val provisioningApi: EspApiService? = null,
+    primaryBaseUrl: String? = null,
+    private val apiFactory: ((String) -> EspApiService)? = null
 ) {
     private val gson = Gson()
-    private var preferMdnsEndpoint: Boolean = false
-
-    fun setPreferMdnsEndpoint(enabled: Boolean) {
-        preferMdnsEndpoint = enabled && provisioningApi != null
-    }
+    private var primaryApi: EspApiService = api
+    private var primaryIpHost: String? = parseHost(primaryBaseUrl)
 
     suspend fun getStatus(): Result<EspStatus> {
-        return tryServices(::safeStatusCall)
+        return tryServices(::safeStatusCall) { _, status ->
+            updatePrimaryFromStatus(status)
+        }
     }
 
     suspend fun submitProvisioning(ssid: String, password: String): Result<Unit> {
@@ -32,30 +34,32 @@ class EspRepository(
             password = password
         )
 
-        val result = tryServices { service ->
+        val services = provisioningFirstServices()
+        var lastFailure: Throwable? = null
+
+        for (service in services) {
             try {
-                handleUnitResponse(
+                val result = handleUnitResponse(
                     response = service.provision(request),
                     badRequestMessage = "SSID nesmí být prázdné. Zkontrolujte zadané údaje a zkuste to znovu."
                 )
+
+                if (result.isSuccess) {
+                    return result
+                }
+
+                lastFailure = result.exceptionOrNull()
             } catch (e: IOException) {
-                Result.failure(
-                    Exception(
-                        "Nepodařilo se spojit se zařízením pro provisioning. Připojte telefon k síti Grundfos-Provision a zkuste to znovu.",
-                        e
-                    )
+                lastFailure = Exception(
+                    "Nepodařilo se spojit se zařízením pro provisioning. Připojte telefon k síti Grundfos-Provision a zkuste to znovu.",
+                    e
                 )
             } catch (e: Exception) {
-                Result.failure(e)
+                lastFailure = e
             }
         }
 
-        if (result.isSuccess) {
-            // Po úspěšném provisioningu má appka preferovat mDNS endpoint.
-            setPreferMdnsEndpoint(true)
-        }
-
-        return result
+        return Result.failure(lastFailure ?: Exception("Provisioning se nezdařil."))
     }
 
     suspend fun setMode(mode: String): Result<Unit> {
@@ -162,25 +166,32 @@ class EspRepository(
     private suspend fun executeUnitOnServices(
         action: suspend (EspApiService) -> Result<Unit>
     ): Result<Unit> {
-        return tryServices { service ->
-            try {
-                action(service)
-            } catch (e: IOException) {
-                Result.failure(e)
-            } catch (e: Exception) {
-                Result.failure(e)
+        return tryServices(
+            action = { service ->
+                try {
+                    action(service)
+                } catch (e: IOException) {
+                    Result.failure(e)
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            },
+            onSuccess = { service, _ ->
+                recoverPrimaryFromMdnsIfNeeded(service)
             }
-        }
+        )
     }
 
     private suspend fun <T> tryServices(
-        action: suspend (EspApiService) -> Result<T>
+        action: suspend (EspApiService) -> Result<T>,
+        onSuccess: suspend (EspApiService, T) -> Unit = { _, _ -> }
     ): Result<T> {
         var lastFailure: Throwable? = null
 
         for (service in orderedServices()) {
             val result = action(service)
             if (result.isSuccess) {
+                result.getOrNull()?.let { value -> onSuccess(service, value) }
                 return result
             }
             lastFailure = result.exceptionOrNull()
@@ -190,12 +201,13 @@ class EspRepository(
     }
 
     private fun orderedServices(): List<EspApiService> {
-        val fallback = provisioningApi ?: return listOf(api)
-        return if (preferMdnsEndpoint) {
-            listOf(fallback, api)
-        } else {
-            listOf(api, fallback)
-        }
+        val fallback = provisioningApi ?: return listOf(primaryApi)
+        return if (fallback === primaryApi) listOf(primaryApi) else listOf(primaryApi, fallback)
+    }
+
+    private fun provisioningFirstServices(): List<EspApiService> {
+        val fallback = provisioningApi ?: return listOf(primaryApi)
+        return if (fallback === primaryApi) listOf(primaryApi) else listOf(fallback, primaryApi)
     }
 
     private suspend fun safeStatusCall(service: EspApiService): Result<EspStatus> {
@@ -208,6 +220,43 @@ class EspRepository(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private suspend fun recoverPrimaryFromMdnsIfNeeded(service: EspApiService) {
+        val mdnsService = provisioningApi ?: return
+        if (service !== mdnsService) {
+            return
+        }
+
+        val status = runCatching { mdnsService.getStatus() }.getOrNull() ?: return
+        updatePrimaryFromStatus(status)
+    }
+
+    private fun updatePrimaryFromStatus(status: EspStatus) {
+        val discoveredHost = parseHost(status.networkInfo?.ip)
+            ?: parseHost(status.ip)
+            ?: return
+
+        if (discoveredHost == primaryIpHost) {
+            return
+        }
+
+        primaryIpHost = discoveredHost
+        val factory = apiFactory ?: return
+        val newBaseUrl = "http://$discoveredHost/"
+        primaryApi = factory(newBaseUrl)
+    }
+
+    private fun parseHost(value: String?): String? {
+        val raw = value?.trim().orEmpty()
+        if (raw.isBlank()) {
+            return null
+        }
+
+        return runCatching {
+            val uri = if (raw.contains("://")) URI(raw) else URI("http://$raw")
+            uri.host?.takeIf { it.isNotBlank() }
+        }.getOrNull() ?: raw.substringBefore('/').ifBlank { null }
     }
 
     private fun handleUnitResponse(

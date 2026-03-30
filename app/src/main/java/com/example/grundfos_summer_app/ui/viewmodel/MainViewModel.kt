@@ -51,7 +51,9 @@ class MainViewModel : ViewModel() {
 
     private val repository: EspRepository = EspRepository(
         api = RetrofitProvider.buildRetrofit(PRIMARY_BASE_URL),
-        provisioningApi = RetrofitProvider.buildRetrofit(MDNS_BASE_URL)
+        provisioningApi = RetrofitProvider.buildRetrofit(MDNS_BASE_URL),
+        primaryBaseUrl = PRIMARY_BASE_URL,
+        apiFactory = RetrofitProvider::buildRetrofit
     )
 
     init {
