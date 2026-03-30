@@ -24,9 +24,14 @@ data class UiState(
     val status: EspStatus? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    val provisioningSuccessMessage: String? = null,
     val isConnectionLost: Boolean = false,
+    val isProvisioningRequired: Boolean = true,
+    val isProvisioningSubmitting: Boolean = false,
+    val lastSuccessfulStatusAt: Long? = null,
     val logs: List<LogEntry> = emptyList(),
-    val selectedLog: LogEntry? = null
+    val selectedLog: LogEntry? = null,
+    val showDeviceInfoInProvisioning: Boolean = false
 )
 
 class MainViewModel : ViewModel() {
@@ -39,14 +44,20 @@ class MainViewModel : ViewModel() {
     private var lastTimeError = false
     private var lastPumpError = false
 
+    private companion object {
+        const val PRIMARY_BASE_URL = "http://10.66.12.184/"
+        const val MDNS_BASE_URL = "http://grundfos-pump.local/"
+    }
+
     private val repository: EspRepository = EspRepository(
-        RetrofitProvider.buildRetrofit("http://10.66.12.184/")
+        api = RetrofitProvider.buildRetrofit(PRIMARY_BASE_URL),
+        provisioningApi = RetrofitProvider.buildRetrofit(MDNS_BASE_URL)
     )
 
     init {
         viewModelScope.launch {
             while (true) {
-                refreshStatus()
+                refreshStatusInternal(showLoading = _uiState.value.status == null)
                 delay(3000)
             }
         }
@@ -77,7 +88,7 @@ class MainViewModel : ViewModel() {
             repository.setMode(mode)
                 .onSuccess { 
                     addLog("Změna režimu na $mode", false)
-                    refreshStatus() 
+                    refreshStatusInternal(showLoading = false) 
                 }
                 .onFailure { 
                     addLog("Chyba při změně režimu: ${it.message}", true)
@@ -91,7 +102,7 @@ class MainViewModel : ViewModel() {
             repository.setBypass(enabled)
                 .onSuccess { 
                     addLog("Bypass ${if (enabled) "zapnut" else "vypnut"}", false)
-                    refreshStatus() 
+                    refreshStatusInternal(showLoading = false) 
                 }
                 .onFailure { 
                     addLog("Chyba bypassu: ${it.message}", true)
@@ -105,7 +116,7 @@ class MainViewModel : ViewModel() {
             repository.pumpStart()
                 .onSuccess { 
                     addLog("Start čerpadla", false)
-                    refreshStatus() 
+                    refreshStatusInternal(showLoading = false) 
                 }
                 .onFailure { 
                     addLog("Chyba při startu čerpadla: ${it.message}", true)
@@ -119,7 +130,7 @@ class MainViewModel : ViewModel() {
             repository.pumpStop()
                 .onSuccess { 
                     addLog("Zastavení čerpadla", false)
-                    refreshStatus() 
+                    refreshStatusInternal(showLoading = false) 
                 }
                 .onFailure { 
                     addLog("Chyba při zastavení čerpadla: ${it.message}", true)
@@ -133,7 +144,7 @@ class MainViewModel : ViewModel() {
             repository.resetErrors()
                 .onSuccess { 
                     addLog("Reset chyb proveden", false)
-                    refreshStatus() 
+                    refreshStatusInternal(showLoading = false) 
                     _uiState.update { it.copy(selectedLog = null) }
                 }
                 .onFailure { 
@@ -148,7 +159,7 @@ class MainViewModel : ViewModel() {
             repository.resetPumpError()
                 .onSuccess { 
                     addLog("Reset chyby čerpadla", false)
-                    refreshStatus() 
+                    refreshStatusInternal(showLoading = false) 
                 }
                 .onFailure { 
                     addLog("Chyba při resetu čerpadla: ${it.message}", true)
@@ -161,21 +172,27 @@ class MainViewModel : ViewModel() {
         retryCount = 0
         _uiState.update { it.copy(
             isConnectionLost = false,
-            errorMessage = null
+            errorMessage = null,
+            isProvisioningRequired = computeProvisioningRequired(
+                status = it.status,
+                isConnectionLost = false
+            ),
+            showDeviceInfoInProvisioning = false
         )}
         addLog("Obnovování připojení...", false)
+        refreshStatusNow(showLoading = false)
     }
 
     fun saveSettings(startTime: String, runMinutes: Int, feedbackTimeoutSec: Int) {
         viewModelScope.launch {
             val result: Result<Unit> = repository.saveSettings(
-                startTime = startTime,
-                runMinutes = runMinutes,
-                feedbackTimeoutSec = feedbackTimeoutSec
+                startTime,
+                runMinutes,
+                feedbackTimeoutSec
             )
             result.onSuccess { 
                 addLog("Změna nastavení plánu spouštění", false)
-                refreshStatus() 
+                refreshStatusInternal(showLoading = false) 
             }
             result.onFailure { 
                 addLog("Chyba při ukládání nastavení: ${it.message}", true)
@@ -188,8 +205,67 @@ class MainViewModel : ViewModel() {
         _uiState.update { it.copy(errorMessage = null) }
     }
 
-    private suspend fun refreshStatus() {
-        _uiState.update { it.copy(isLoading = true) }
+    fun clearProvisioningSuccessMessage() {
+        _uiState.update { it.copy(provisioningSuccessMessage = null) }
+    }
+
+    fun toggleDeviceInfoInProvisioning() {
+        _uiState.update { it.copy(showDeviceInfoInProvisioning = !it.showDeviceInfoInProvisioning) }
+    }
+
+    fun refreshStatusNow(showLoading: Boolean = true) {
+        viewModelScope.launch {
+            refreshStatusInternal(showLoading = showLoading)
+        }
+    }
+
+    fun submitProvisioning(ssid: String, password: String) {
+        val trimmedSsid = ssid.trim()
+        if (trimmedSsid.isBlank()) {
+            _uiState.update {
+                it.copy(errorMessage = "SSID nesmí být prázdné.")
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isProvisioningSubmitting = true,
+                    provisioningSuccessMessage = null,
+                    errorMessage = null
+                )
+            }
+
+            repository.submitProvisioning(trimmedSsid, password)
+                .onSuccess {
+                    addLog("Provisioning Wi‑Fi byl odeslán pro síť $trimmedSsid", false)
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            isProvisioningSubmitting = false,
+                            provisioningSuccessMessage = "Přihlašovací údaje byly odeslány. Zařízení se nyní pokusí připojit k zadané síti.",
+                            errorMessage = null
+                        )
+                    }
+                    delay(1000)
+                    refreshStatusInternal(showLoading = false)
+                }
+                .onFailure {
+                    addLog("Chyba při provisioningu: ${it.message}", true)
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            isProvisioningSubmitting = false,
+                            errorMessage = it.message ?: "Provisioning se nezdařil."
+                        )
+                    }
+                }
+        }
+    }
+
+    private suspend fun refreshStatusInternal(showLoading: Boolean) {
+        if (showLoading) {
+            _uiState.update { it.copy(isLoading = true) }
+        }
 
         repository.getStatus()
             .onSuccess { status ->
@@ -207,11 +283,19 @@ class MainViewModel : ViewModel() {
                 lastTimeError = status.errors.time
                 lastPumpError = status.errors.pump
 
+                val refreshTimestamp = System.currentTimeMillis()
+
                 _uiState.update { it.copy(
                     status = status,
                     isLoading = false,
                     errorMessage = null,
-                    isConnectionLost = false
+                    isConnectionLost = false,
+                    isProvisioningRequired = computeProvisioningRequired(
+                        status = status,
+                        isConnectionLost = false
+                    ),
+                    lastSuccessfulStatusAt = refreshTimestamp,
+                    showDeviceInfoInProvisioning = false
                 )}
             }
             .onFailure { throwable ->
@@ -226,9 +310,53 @@ class MainViewModel : ViewModel() {
                 _uiState.update { it.copy(
                     isLoading = false,
                     errorMessage = if (isLost) "Připojení k ESP ztraceno" else throwable.message,
-                    isConnectionLost = isLost
+                    isConnectionLost = isLost,
+                    isProvisioningRequired = computeProvisioningRequired(
+                        status = it.status,
+                        isConnectionLost = isLost
+                    ),
+                    showDeviceInfoInProvisioning = false
                 )}
             }
+    }
+
+    private fun computeProvisioningRequired(
+        status: EspStatus?,
+        isConnectionLost: Boolean
+    ): Boolean {
+        if (isConnectionLost || status == null) {
+            return true
+        }
+
+        if (status.provisioningRequired == true || status.deviceInfo?.provisioningRequired == true) {
+            return true
+        }
+
+        if (status.apMode == true || status.networkInfo?.apMode == true) {
+            return true
+        }
+
+        val state = status.state.uppercase()
+        if (state.contains("PROVISION")) {
+            return true
+        }
+
+        val connected = status.networkInfo?.connected
+        val stationMode = status.networkInfo?.stationMode ?: status.stationMode
+        val hasWifiConfig = !status.networkInfo?.ssid.isNullOrBlank() || !status.ssid.isNullOrBlank()
+        val wifiErrorSuggestsProvisioning = status.errors.wifi && (
+            connected == false ||
+                stationMode == false ||
+                status.apMode == true ||
+                status.networkInfo?.apMode == true ||
+                (!hasWifiConfig && state == "WIFI_ERROR")
+            )
+
+        if (wifiErrorSuggestsProvisioning) {
+            return true
+        }
+
+        return false
     }
 
     private fun setError(throwable: Throwable?) {

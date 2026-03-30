@@ -26,6 +26,7 @@ import com.example.grundfos_summer_app.ui.viewmodel.MainViewModel
 fun MainScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToMessages: () -> Unit,
+    onNavigateToProvisioning: () -> Unit,
     viewModel: MainViewModel
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -41,13 +42,6 @@ fun MainScreen(
         )
         if (result == SnackbarResult.Dismissed || result == SnackbarResult.ActionPerformed) {
             viewModel.clearErrorMessage()
-        }
-    }
-
-    // Handlery pro nová tlačítka
-    val onConnect = {
-        if (uiState.isConnectionLost) {
-            viewModel.resetConnectionTimeout()
         }
     }
 
@@ -98,7 +92,12 @@ fun MainScreen(
                                     icon = Icons.Sharp.Wifi,
                                     label = "Připojení",
                                     color = if (uiState.isConnectionLost) MaterialTheme.colorScheme.error else Color(0xFF1565C0),
-                                    onClick = onConnect,
+                                    onClick = {
+                                        if (uiState.isConnectionLost) {
+                                            viewModel.resetConnectionTimeout()
+                                        }
+                                        onNavigateToProvisioning()
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                                 // Nastavení
@@ -136,6 +135,7 @@ fun MainScreen(
                             if (uiState.isConnectionLost) {
                                 viewModel.resetConnectionTimeout()
                             }
+                            onNavigateToProvisioning()
                         },
                         onPumpErrorClick = viewModel::resetPumpError,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)

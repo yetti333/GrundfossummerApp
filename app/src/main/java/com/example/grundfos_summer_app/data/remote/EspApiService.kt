@@ -1,5 +1,6 @@
 package com.example.grundfos_summer_app.data.remote
 
+import com.example.grundfos_summer_app.data.model.ProvisioningRequest
 import com.example.grundfos_summer_app.data.model.EspStatus
 import okhttp3.RequestBody
 import retrofit2.Response
@@ -10,6 +11,9 @@ import retrofit2.http.POST
 interface EspApiService {
     @GET("status")
     suspend fun getStatus(): EspStatus
+
+    @POST("provision")
+    suspend fun provision(@Body request: ProvisioningRequest): Response<Unit>
 
     @POST("set/mode")
     suspend fun setMode(@Body body: RequestBody): Response<Unit>

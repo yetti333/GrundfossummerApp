@@ -1,5 +1,6 @@
 package com.example.grundfos_summer_app.data.repository
 
+import com.example.grundfos_summer_app.data.model.ProvisioningRequest
 import com.example.grundfos_summer_app.data.model.EspStatus
 import com.example.grundfos_summer_app.data.model.EspSchedule
 import com.example.grundfos_summer_app.data.remote.EspApiService
@@ -9,116 +10,124 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import retrofit2.Response
-import retrofit2.HttpException
 
-class EspRepository(private val api: EspApiService) {
+class EspRepository(
+    private val api: EspApiService,
+    private val provisioningApi: EspApiService? = null
+) {
     private val gson = Gson()
+    private var preferMdnsEndpoint: Boolean = false
+
+    fun setPreferMdnsEndpoint(enabled: Boolean) {
+        preferMdnsEndpoint = enabled && provisioningApi != null
+    }
 
     suspend fun getStatus(): Result<EspStatus> {
-        return try {
-            Result.success(api.getStatus())
-        } catch (e: HttpException) {
-            Result.failure(Exception("HTTP ${e.code()}"))
-        } catch (e: IOException) {
-            Result.failure(e)
-        } catch (e: Exception) {
-            Result.failure(e)
+        return tryServices(::safeStatusCall)
+    }
+
+    suspend fun submitProvisioning(ssid: String, password: String): Result<Unit> {
+        val request = ProvisioningRequest(
+            ssid = ssid.trim(),
+            password = password
+        )
+
+        val result = tryServices { service ->
+            try {
+                handleUnitResponse(
+                    response = service.provision(request),
+                    badRequestMessage = "SSID nesmí být prázdné. Zkontrolujte zadané údaje a zkuste to znovu."
+                )
+            } catch (e: IOException) {
+                Result.failure(
+                    Exception(
+                        "Nepodařilo se spojit se zařízením pro provisioning. Připojte telefon k síti Grundfos-Provision a zkuste to znovu.",
+                        e
+                    )
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
         }
+
+        if (result.isSuccess) {
+            // Po úspěšném provisioningu má appka preferovat mDNS endpoint.
+            setPreferMdnsEndpoint(true)
+        }
+
+        return result
     }
 
     suspend fun setMode(mode: String): Result<Unit> {
-        return try {
+        return executeUnitOnServices { service ->
             tryUnitResponses(
                 listOf(
-                    { api.setMode(createJsonBody(gson.toJson(mapOf("mode" to mode)))) },
-                    { api.setMode(createJsonBody(gson.toJson(mapOf("mode" to normalizeModeState(mode))))) },
-                    { api.setMode(createJsonBody(gson.toJson(mapOf("state" to normalizeModeState(mode))))) },
-                    { api.setMode(createJsonBody(gson.toJson(mapOf("mode" to mode.lowercase())))) }
+                    { service.setMode(createJsonBody(gson.toJson(mapOf("mode" to mode)))) },
+                    { service.setMode(createJsonBody(gson.toJson(mapOf("mode" to normalizeModeState(mode))))) },
+                    { service.setMode(createJsonBody(gson.toJson(mapOf("state" to normalizeModeState(mode))))) },
+                    { service.setMode(createJsonBody(gson.toJson(mapOf("mode" to mode.lowercase())))) }
                 )
             )
-        } catch (e: IOException) {
-            Result.failure(e)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 
     suspend fun setBypass(enabled: Boolean): Result<Unit> {
-        return try {
+        return executeUnitOnServices { service ->
             tryUnitResponses(
                 listOf(
-                    { api.setBypass(createJsonBody(gson.toJson(mapOf("bypass" to enabled)))) },
-                    { api.setBypass(createJsonBody(gson.toJson(mapOf("enabled" to enabled)))) },
-                    { api.setBypass(createJsonBody(gson.toJson(mapOf("bypass" to if (enabled) 1 else 0)))) },
-                    { api.setBypass(createJsonBody(gson.toJson(mapOf("enabled" to if (enabled) 1 else 0)))) }
+                    { service.setBypass(createJsonBody(gson.toJson(mapOf("bypass" to enabled)))) },
+                    { service.setBypass(createJsonBody(gson.toJson(mapOf("enabled" to enabled)))) },
+                    { service.setBypass(createJsonBody(gson.toJson(mapOf("bypass" to if (enabled) 1 else 0)))) },
+                    { service.setBypass(createJsonBody(gson.toJson(mapOf("enabled" to if (enabled) 1 else 0)))) }
                 )
             )
-        } catch (e: IOException) {
-            Result.failure(e)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 
     suspend fun pumpStart(): Result<Unit> {
-        return try {
-            handleUnitResponse(api.pumpStart())
-        } catch (e: IOException) {
-            Result.failure(e)
-        } catch (e: Exception) {
-            Result.failure(e)
+        return executeUnitOnServices { service ->
+            handleUnitResponse(service.pumpStart())
         }
     }
 
     suspend fun pumpStop(): Result<Unit> {
-        return try {
-            handleUnitResponse(api.pumpStop())
-        } catch (e: IOException) {
-            Result.failure(e)
-        } catch (e: Exception) {
-            Result.failure(e)
+        return executeUnitOnServices { service ->
+            handleUnitResponse(service.pumpStop())
         }
     }
 
     suspend fun resetErrors(): Result<Unit> {
-        return try {
-            handleUnitResponse(api.resetErrors())
-        } catch (e: IOException) {
-            Result.failure(e)
-        } catch (e: Exception) {
-            Result.failure(e)
+        return executeUnitOnServices { service ->
+            handleUnitResponse(service.resetErrors())
         }
     }
 
     suspend fun resetPumpError(): Result<Unit> {
-        return try {
-            handleUnitResponse(api.resetPumpError(createJsonBody("{}")))
-        } catch (e: IOException) {
-            Result.failure(e)
-        } catch (e: Exception) {
-            Result.failure(e)
+        return executeUnitOnServices { service ->
+            handleUnitResponse(service.resetPumpError(createJsonBody("{}")))
         }
     }
 
     suspend fun saveSettings(
         startTime: String,
         runMinutes: Int,
-        feedbackTimeoutSec: Int
+        _feedbackTimeoutSec: Int
     ): Result<Unit> {
-        return try {
-            val parts = startTime.split(":")
-            val startHour = parts.getOrNull(0)?.toIntOrNull() ?: 0
-            val startMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0
-            val schedule = EspSchedule(
-                startHour = startHour,
-                startMinute = startMinute,
-                durationMinutes = runMinutes
-            )
+        val parts = startTime.split(":")
+        val startHour = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        val startMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        val schedule = EspSchedule(
+            startHour = startHour,
+            startMinute = startMinute,
+            durationMinutes = runMinutes
+        )
+
+        return executeUnitOnServices { service ->
             tryUnitResponses(
                 listOf(
-                    { api.saveSchedule(createJsonBody(gson.toJson(schedule))) },
+                    { service.saveSchedule(createJsonBody(gson.toJson(schedule))) },
                     {
-                        api.saveSchedule(
+                        service.saveSchedule(
                             createJsonBody(
                                 gson.toJson(
                                     mapOf(
@@ -133,7 +142,7 @@ class EspRepository(private val api: EspApiService) {
                         )
                     },
                     {
-                        api.saveSchedule(
+                        service.saveSchedule(
                             createJsonBody(
                                 gson.toJson(
                                     mapOf(
@@ -147,6 +156,53 @@ class EspRepository(private val api: EspApiService) {
                     }
                 )
             )
+        }
+    }
+
+    private suspend fun executeUnitOnServices(
+        action: suspend (EspApiService) -> Result<Unit>
+    ): Result<Unit> {
+        return tryServices { service ->
+            try {
+                action(service)
+            } catch (e: IOException) {
+                Result.failure(e)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    private suspend fun <T> tryServices(
+        action: suspend (EspApiService) -> Result<T>
+    ): Result<T> {
+        var lastFailure: Throwable? = null
+
+        for (service in orderedServices()) {
+            val result = action(service)
+            if (result.isSuccess) {
+                return result
+            }
+            lastFailure = result.exceptionOrNull()
+        }
+
+        return Result.failure(lastFailure ?: Exception("Požadavek se nezdařil."))
+    }
+
+    private fun orderedServices(): List<EspApiService> {
+        val fallback = provisioningApi ?: return listOf(api)
+        return if (preferMdnsEndpoint) {
+            listOf(fallback, api)
+        } else {
+            listOf(api, fallback)
+        }
+    }
+
+    private suspend fun safeStatusCall(service: EspApiService): Result<EspStatus> {
+        return try {
+            Result.success(service.getStatus())
+        } catch (e: retrofit2.HttpException) {
+            Result.failure(Exception("HTTP ${e.code()}"))
         } catch (e: IOException) {
             Result.failure(e)
         } catch (e: Exception) {
@@ -154,10 +210,17 @@ class EspRepository(private val api: EspApiService) {
         }
     }
 
-    private fun handleUnitResponse(response: Response<Unit>): Result<Unit> {
+    private fun handleUnitResponse(
+        response: Response<Unit>,
+        badRequestMessage: String? = null
+    ): Result<Unit> {
         return if (response.isSuccessful) {
             Result.success(Unit)
         } else {
+            if (response.code() == 400 && badRequestMessage != null) {
+                return Result.failure(IllegalArgumentException(badRequestMessage))
+            }
+
             val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
             val msg = if (!errorBody.isNullOrBlank()) {
                 "HTTP ${response.code()}: $errorBody"
