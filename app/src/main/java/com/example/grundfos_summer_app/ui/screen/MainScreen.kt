@@ -1,10 +1,12 @@
 package com.example.grundfos_summer_app.ui.screen
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.sharp.Description
 import androidx.compose.material.icons.sharp.Settings
@@ -14,12 +16,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.grundfos_summer_app.ui.viewmodel.MainViewModel
+import androidx.compose.ui.draw.scale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,7 +103,8 @@ fun MainScreen(
                                         }
                                         onNavigateToProvisioning()
                                     },
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f),
+                                    isPulsing = uiState.isLoading
                                 )
                                 // Nastavení
                                 TechnicalButton(
@@ -170,7 +176,8 @@ private fun TechnicalButton(
     label: String,
     color: Color,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isPulsing: Boolean = false
 ) {
     Card(
         onClick = onClick,
@@ -185,11 +192,25 @@ private fun TechnicalButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            val iconModifier = if (isPulsing) {
+                val infiniteTransition = rememberInfiniteTransition()
+                val scale by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.8f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(500, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    )
+                )
+                Modifier.size(28.dp).scale(scale)
+            } else {
+                Modifier.size(28.dp)
+            }
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = Color.White,
-                modifier = Modifier.size(28.dp)
+                modifier = iconModifier
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -224,24 +245,30 @@ private fun StatusCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("Stav", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            InfoRow("Režim:", mode)
-            IconRow("Čerpadlo běží:", pumpRunning)
+            InfoRow("Režim:", mode, valueColor = when(mode) {
+                "AUTO" -> if (pumpError) Color.Red else Color(0xFF388E3C)
+                "MANUAL" -> Color(0xFF1565C0)
+                else -> Color.Unspecified
+            })
+            IconRow("Čerpadlo běží:", pumpRunning, animated = true)
             InfoRow("Pulzy zpětné vazby:", feedback)
             IconRow("Zpětná vazba stabilní:", feedbackStable)
             IconRow("Bypass aktivní:", bypass)
 
             Text("Chyby:", style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ErrorChip(
                     label = "WiFi", 
                     isError = wifiError,
-                    onClick = onWifiErrorClick
+                    onClick = onWifiErrorClick,
+                    modifier = Modifier.weight(1f)
                 )
-                ErrorChip(label = "Čas", isError = timeError)
+                ErrorChip(label = "Čas", isError = timeError, modifier = Modifier.weight(1f))
                 ErrorChip(
                     label = "Čerpadlo", 
                     isError = pumpError,
-                    onClick = onPumpErrorClick
+                    onClick = onPumpErrorClick,
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
@@ -294,7 +321,7 @@ private fun ControlsCard(
                 Switch(
                     checked = bypass,
                     onCheckedChange = onBypassChanged,
-                    enabled = mode != null && !pumpRunning
+                    enabled = mode != null && !pumpRunning && mode != "MANUAL"
                 )
             }
 
@@ -309,8 +336,7 @@ private fun ControlsCard(
             Button(
                 onClick = onPumpStop,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = mode == "MANUAL" && pumpRunning,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                enabled = mode == "MANUAL" && pumpRunning
             ) {
                 Text("Zastavit čerpadlo")
             }
@@ -319,30 +345,48 @@ private fun ControlsCard(
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+private fun InfoRow(label: String, value: String, valueColor: Color = Color.Unspecified) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium)
-        Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = valueColor)
     }
 }
 
 @Composable
-private fun IconRow(label: String, active: Boolean) {
+private fun IconRow(label: String, active: Boolean, animated: Boolean = false) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium)
-        Icon(
-            imageVector = if (active) Icons.Default.Check else Icons.Default.Remove,
-            contentDescription = null,
-            tint = if (active) Color(0xFF388E3C) else Color.Gray,
-            modifier = Modifier.size(20.dp)
-        )
+        if (animated && active) {
+            val infiniteTransition = rememberInfiniteTransition()
+            val rotation by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                )
+            )
+            Icon(
+                imageVector = Icons.Filled.Refresh,
+                contentDescription = null,
+                tint = Color(0xFF388E3C),
+                modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation }
+            )
+        } else {
+            Icon(
+                imageVector = if (active) Icons.Default.Check else Icons.Default.Remove,
+                contentDescription = null,
+                tint = if (active) Color(0xFF388E3C) else Color.Gray,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 
@@ -351,11 +395,12 @@ private fun IconRow(label: String, active: Boolean) {
 private fun ErrorChip(
     label: String, 
     isError: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit = {}
 ) {
     AssistChip(
         onClick = onClick,
-        label = { Text(label, fontSize = 11.sp) },
+        label = { Text(modifier = Modifier.fillMaxWidth(), text = label, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center) },
         colors = AssistChipDefaults.assistChipColors(
             containerColor = if (isError) Color(0xFFFDECEA) else Color(0xFFF5F5F5),
             labelColor = if (isError) Color(0xFFD32F2F) else Color.Gray
@@ -363,6 +408,7 @@ private fun ErrorChip(
         border = AssistChipDefaults.assistChipBorder(
             enabled = true,
             borderColor = if (isError) Color(0xFFEF9A9A) else Color.LightGray
-        )
+        ),
+        modifier = modifier
     )
 }

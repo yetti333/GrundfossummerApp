@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -69,10 +70,10 @@ fun ProvisioningScreen(
 
     var ssid by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var showInfo by rememberSaveable { mutableStateOf(true) }
 
     val isSsidValid = remember(ssid) { ssid.trim().isNotEmpty() }
     val showInitialLoading = uiState.isLoading && uiState.status == null && !uiState.isConnectionLost
-    val showDeviceInfo = uiState.showDeviceInfoInProvisioning && uiState.status != null
 
     LaunchedEffect(uiState.errorMessage) {
         val message = uiState.errorMessage ?: return@LaunchedEffect
@@ -110,16 +111,6 @@ fun ProvisioningScreen(
                     }
                 },
                 actions = {
-                    if (uiState.status != null) {
-                        TextButton(
-                            onClick = { viewModel.toggleDeviceInfoInProvisioning() }
-                        ) {
-                            Text(
-                                if (showDeviceInfo) "Provisioning" else "Informace",
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
                     IconButton(onClick = { viewModel.refreshStatusNow() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Obnovit stav")
                     }
@@ -142,15 +133,44 @@ fun ProvisioningScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { showInfo = true },
+                                modifier = Modifier.weight(1f),
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = if (showInfo) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            ) {
+                                Icon(Icons.Default.Info, contentDescription = null)
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Text("Informace")
+                            }
+                            Button(
+                                onClick = { showInfo = false },
+                                modifier = Modifier.weight(1f),
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = if (!showInfo) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            ) {
+                                Icon(Icons.Sharp.Wifi, contentDescription = null)
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Text("Připojení")
+                            }
+                        }
+                    }
+                    item {
                         ProvisioningStateCard(
-                            showDeviceInfo = showDeviceInfo,
+                            showInfo = showInfo,
                             isConnectionLost = uiState.isConnectionLost,
                             errorMessage = uiState.errorMessage,
                             status = uiState.status
                         )
                     }
 
-                    if (showDeviceInfo) {
+                    if (showInfo) {
                         val status = uiState.status
                         item {
                             DeviceOverviewCard(status = status)
@@ -189,7 +209,7 @@ fun ProvisioningScreen(
                     item {
                         RefreshCard(
                             isRefreshing = uiState.isLoading,
-                            showDeviceInfo = showDeviceInfo,
+                            showInfo = showInfo,
                             onRefresh = { viewModel.refreshStatusNow() }
                         )
                     }
@@ -201,20 +221,20 @@ fun ProvisioningScreen(
 
 @Composable
 private fun ProvisioningStateCard(
-    showDeviceInfo: Boolean,
+    showInfo: Boolean,
     isConnectionLost: Boolean,
     errorMessage: String?,
     status: EspStatus?,
     modifier: Modifier = Modifier
 ) {
-    val isProvisioningDetected = status != null && !showDeviceInfo
+    val isProvisioningDetected = status != null && !showInfo
     val containerColor = when {
-        showDeviceInfo -> MaterialTheme.colorScheme.primaryContainer
+        showInfo -> MaterialTheme.colorScheme.primaryContainer
         isConnectionLost -> MaterialTheme.colorScheme.errorContainer
         else -> MaterialTheme.colorScheme.tertiaryContainer
     }
     val contentColor = when {
-        showDeviceInfo -> MaterialTheme.colorScheme.onPrimaryContainer
+        showInfo -> MaterialTheme.colorScheme.onPrimaryContainer
         isConnectionLost -> MaterialTheme.colorScheme.onErrorContainer
         else -> MaterialTheme.colorScheme.onTertiaryContainer
     }
@@ -235,24 +255,24 @@ private fun ProvisioningStateCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (showDeviceInfo) "Připojené zařízení" else "Provisioning",
+                    text = if (showInfo) "Připojené zařízení" else "Provisioning",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = contentColor
                 )
                 StatusChip(
                     label = when {
-                        showDeviceInfo -> "Dostupné"
+                        showInfo -> "Dostupné"
                         isProvisioningDetected -> "Čeká na nastavení"
                         else -> "Nedostupné"
                     },
                     containerColor = when {
-                        showDeviceInfo -> Color(0xFFD9F2E3)
+                        showInfo -> Color(0xFFD9F2E3)
                         isProvisioningDetected -> Color(0xFFFFF3CD)
                         else -> Color(0xFFFDECEA)
                     },
                     labelColor = when {
-                        showDeviceInfo -> Color(0xFF2E7D32)
+                        showInfo -> Color(0xFF2E7D32)
                         isProvisioningDetected -> Color(0xFF8D6E00)
                         else -> Color(0xFFC62828)
                     }
@@ -261,7 +281,7 @@ private fun ProvisioningStateCard(
 
             Text(
                 text = when {
-                    showDeviceInfo -> "ESP zařízení odpovídá a jsou k dispozici stavové informace. Níže vidíte přehled síťových a systémových údajů."
+                    showInfo -> "ESP zařízení odpovídá a jsou k dispozici stavové informace. Níže vidíte přehled síťových a systémových údajů."
                     isConnectionLost -> "Zařízení se nepodařilo kontaktovat. Pokud je v AP režimu, připojte telefon k síti Grundfos-Provision a odešlete nové Wi‑Fi údaje."
                     else -> "Zařízení čeká na nastavení Wi‑Fi nebo běží v provisioning/AP režimu. Připojte se k jeho dočasné síti a odešlete cílové přihlašovací údaje."
                 },
@@ -269,7 +289,7 @@ private fun ProvisioningStateCard(
                 color = contentColor
             )
 
-            if (!errorMessage.isNullOrBlank() && !showDeviceInfo) {
+            if (!errorMessage.isNullOrBlank() && !showInfo) {
                 Text(
                     text = "Poslední chyba: $errorMessage",
                     style = MaterialTheme.typography.bodySmall,
@@ -520,7 +540,7 @@ private fun ProvisioningFormCard(
 @Composable
 private fun RefreshCard(
     isRefreshing: Boolean,
-    showDeviceInfo: Boolean,
+    showInfo: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -533,7 +553,7 @@ private fun RefreshCard(
         ) {
             Text("Aktualizace stavu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                text = if (showDeviceInfo) {
+                text = if (showInfo) {
                     "Načte aktuální informace o zařízení a ověří, zda je stále dostupné."
                 } else {
                     "Po odeslání údajů nebo po připojení telefonu k AP síti můžete ručně ověřit aktuální stav zařízení."
