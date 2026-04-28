@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.grundfos_summer_app.ui.screen.MainScreen
+import com.example.grundfos_summer_app.ui.screen.PumpDetailsScreen
 import com.example.grundfos_summer_app.ui.screen.SettingsScreen
 import com.example.grundfos_summer_app.ui.screen.ErrorScreen
 import com.example.grundfos_summer_app.ui.screen.ProvisioningScreen
@@ -39,6 +40,7 @@ fun AppNavigation() {
                 onNavigateToSettings = { navController.navigate("settings") },
                 onNavigateToMessages = { navController.navigate("messages") },
                 onNavigateToProvisioning = { navController.navigate("provisioning") },
+                onNavigateToPumpDetails = { navController.navigate("pump_details") },
                 viewModel = mainViewModel
             )
         }
@@ -57,6 +59,12 @@ fun AppNavigation() {
         composable("provisioning") {
             ProvisioningScreen(
                 onNavigateBack = { navController.popBackStack() },
+                viewModel = mainViewModel
+            )
+        }
+        composable("pump_details") {
+            PumpDetailsScreen(
+                onBack = { navController.popBackStack() },
                 viewModel = mainViewModel
             )
         }

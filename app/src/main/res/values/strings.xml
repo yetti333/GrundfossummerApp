@@ -1,3 +1,57 @@
 <resources>
     <string name="app_name">Grundfos-summer-App</string>
+    <string name="main_title">Grundfos</string>
+    <string name="main_connection">Připojení</string>
+    <string name="main_settings">Nastavení</string>
+    <string name="main_messages">Zprávy</string>
+    <string name="main_disconnected">ODPOJENO</string>
+    <string name="main_unknown_value">–</string>
+
+    <string name="status_title">Stav</string>
+    <string name="status_mode">Režim:</string>
+    <string name="status_pump_running">Čerpadlo běží:</string>
+    <string name="status_feedback_stable">Zpětná vazba stabilní:</string>
+    <string name="status_pump_power">Duty cycle čerpadla:</string>
+    <string name="status_bypass_active">Bypass aktivní:</string>
+    <string name="status_errors">Chyby:</string>
+
+    <string name="error_wifi">WiFi</string>
+    <string name="error_time">Čas</string>
+    <string name="error_pump">Čerpadlo</string>
+
+    <string name="controls_title">Ovládání</string>
+    <string name="controls_bypass">Bypass</string>
+    <string name="controls_start_pump">Spustit čerpadlo</string>
+    <string name="controls_stop_pump">Zastavit čerpadlo</string>
+    <string name="mode_auto">AUTO</string>
+    <string name="mode_manual">MANUAL</string>
+
+    <string name="format_watts">%1$d W</string>
+    <string name="format_ms_2">%1$.2f ms</string>
+    <string name="format_percent_1">%1$.1f %%</string>
+
+    <string name="pump_details_open">Otevřít podrobnosti čerpadla</string>
+    <string name="pump_details_title">Podrobnosti čerpadla</string>
+    <string name="pump_back">Zpět</string>
+    <string name="pump_details_source">Detailní data PWM z ESP</string>
+    <string name="pump_period_ms">Perioda</string>
+    <string name="pump_high_ms">Délka HIGH</string>
+    <string name="pump_duty_percent">Duty cycle</string>
+    <string name="pump_power_estimate">Odhad příkonu</string>
+    <string name="pump_valid_frequency">Frekvence 75 Hz ± 5 %</string>
+    <string name="pump_interpreted_state">Interpretovaný stav</string>
+    <string name="pump_timestamp">Timestamp</string>
+    <string name="pump_ok">OK</string>
+    <string name="pump_not_ok">NOT OK</string>
+    <string name="pump_default_value">–</string>
+    <string name="pump_alarm_hint">Alarmový stav čerpadla - doporučeno zastavit čerpadlo a zkontrolovat systém.</string>
+
+    <string name="pump_state_standby">Pohotovost</string>
+    <string name="pump_state_ready_standby">Ready standby</string>
+    <string name="pump_state_low_operation">Nízký provoz</string>
+    <string name="pump_state_normal_operation">Normální provoz</string>
+    <string name="pump_state_low_voltage_warning">Varování: nízké napětí</string>
+    <string name="pump_state_rotor_blocked">Alarm: rotor blokovaný</string>
+    <string name="pump_state_electrical_fault">Alarm: elektrická porucha</string>
+    <string name="pump_state_unknown">Neznámý stav</string>
 </resources>

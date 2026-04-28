@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
@@ -25,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.grundfos_summer_app.ui.viewmodel.MainViewModel
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.res.stringResource
+import com.example.grundfos_summer_app.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +35,7 @@ fun MainScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToMessages: () -> Unit,
     onNavigateToProvisioning: () -> Unit,
+    onNavigateToPumpDetails: () -> Unit,
     viewModel: MainViewModel
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -79,7 +83,7 @@ fun MainScreen(
                         ) {
                             // Titulek nahoře
                             Text(
-                                text = "Grundfos Summer",
+                                text = stringResource(id = R.string.main_title),
                                 color = Color(0xFF9B111E), // RAL 3003 (Rubínová červená)
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
@@ -95,7 +99,7 @@ fun MainScreen(
                                 // Připojení
                                 TechnicalButton(
                                     icon = Icons.Sharp.Wifi,
-                                    label = "Připojení",
+                                    label = stringResource(id = R.string.main_connection),
                                     color = if (uiState.isConnectionLost) MaterialTheme.colorScheme.error else Color(0xFF1565C0),
                                     onClick = {
                                         if (uiState.isConnectionLost) {
@@ -109,7 +113,7 @@ fun MainScreen(
                                 // Nastavení
                                 TechnicalButton(
                                     icon = Icons.Sharp.Settings,
-                                    label = "Nastavení",
+                                    label = stringResource(id = R.string.main_settings),
                                     color = Color(0xFF37474F), // technická ocelová šedá
                                     onClick = onNavigateToSettings,
                                     modifier = Modifier.weight(1f)
@@ -117,7 +121,7 @@ fun MainScreen(
                                 // Zprávy (dříve Chyby)
                                 TechnicalButton(
                                     icon = Icons.Sharp.Description,
-                                    label = "Zprávy",
+                                    label = stringResource(id = R.string.main_messages),
                                     color = Color(0xFF455A64), // modrošedá pro logy/zprávy
                                     onClick = onNavigateToMessages,
                                     modifier = Modifier.weight(1f)
@@ -129,14 +133,15 @@ fun MainScreen(
 
                 item {
                     StatusCard(
-                        mode = if (uiState.isConnectionLost) "ODPOJENO" else (uiState.status?.mode ?: "–"),
+                        mode = if (uiState.isConnectionLost) stringResource(id = R.string.main_disconnected) else (uiState.status?.mode ?: stringResource(id = R.string.main_unknown_value)),
                         pumpRunning = if (uiState.isConnectionLost) false else (uiState.status?.pump?.running == true),
-                        feedback = if (uiState.isConnectionLost) "???" else (uiState.status?.pump?.pulseCountLastMinute?.toString() ?: "–"),
                         feedbackStable = if (uiState.isConnectionLost) false else (uiState.status?.pump?.pulseOk == true),
+                        pumpDutyPercent = if (uiState.isConnectionLost) null else uiState.status?.pump?.dutyPercent,
                         bypass = uiState.status?.bypass == true,
                         wifiError = uiState.isConnectionLost || (uiState.status?.errors?.wifi == true),
                         timeError = uiState.status?.errors?.time == true,
                         pumpError = uiState.status?.errors?.pump == true,
+                        onPumpDetailsClick = onNavigateToPumpDetails,
                         onWifiErrorClick = {
                             if (uiState.isConnectionLost) {
                                 viewModel.resetConnectionTimeout()
@@ -227,12 +232,13 @@ private fun TechnicalButton(
 private fun StatusCard(
     mode: String,
     pumpRunning: Boolean,
-    feedback: String,
     feedbackStable: Boolean,
+    pumpDutyPercent: Double?,
     bypass: Boolean,
     wifiError: Boolean,
     timeError: Boolean,
     pumpError: Boolean,
+    onPumpDetailsClick: () -> Unit,
     onWifiErrorClick: () -> Unit,
     onPumpErrorClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -244,28 +250,62 @@ private fun StatusCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Stav", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            InfoRow("Režim:", mode, valueColor = when(mode) {
-                "AUTO" -> if (pumpError) Color.Red else Color(0xFF388E3C)
-                "MANUAL" -> Color(0xFF1565C0)
-                else -> Color.Unspecified
-            })
-            IconRow("Čerpadlo běží:", pumpRunning, animated = true)
-            InfoRow("Pulzy zpětné vazby:", feedback)
-            IconRow("Zpětná vazba stabilní:", feedbackStable)
-            IconRow("Bypass aktivní:", bypass)
+            Text(stringResource(id = R.string.status_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = stringResource(id = R.string.status_mode), style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = mode,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = when (mode) {
+                            "AUTO" -> if (pumpError) Color.Red else Color(0xFF388E3C)
+                            "MANUAL" -> Color(0xFF1565C0)
+                            else -> Color.Unspecified
+                        }
+                    )
+                    IconButton(
+                        onClick = onPumpDetailsClick,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = stringResource(id = R.string.pump_details_open),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+            IconRow(stringResource(id = R.string.status_pump_running), pumpRunning, animated = true)
+            IconRow(stringResource(id = R.string.status_feedback_stable), feedbackStable)
+            InfoRow(
+                stringResource(id = R.string.status_pump_power),
+                if (!pumpRunning) {
+                    "-"
+                } else if (pumpDutyPercent != null) {
+                    stringResource(id = R.string.format_percent_1, pumpDutyPercent)
+                } else {
+                    stringResource(id = R.string.main_unknown_value)
+                }
+            )
+            IconRow(stringResource(id = R.string.status_bypass_active), bypass)
 
-            Text("Chyby:", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(id = R.string.status_errors), style = MaterialTheme.typography.bodyMedium)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ErrorChip(
-                    label = "WiFi", 
+                    label = stringResource(id = R.string.error_wifi),
                     isError = wifiError,
                     onClick = onWifiErrorClick,
                     modifier = Modifier.weight(1f)
                 )
-                ErrorChip(label = "Čas", isError = timeError, modifier = Modifier.weight(1f))
+                ErrorChip(label = stringResource(id = R.string.error_time), isError = timeError, modifier = Modifier.weight(1f))
                 ErrorChip(
-                    label = "Čerpadlo", 
+                    label = stringResource(id = R.string.error_pump),
                     isError = pumpError,
                     onClick = onPumpErrorClick,
                     modifier = Modifier.weight(1f)
@@ -287,8 +327,11 @@ private fun ControlsCard(
     onPumpStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val options = listOf("AUTO", "MANUAL")
-    val selectedIndex = if (mode == null) -1 else options.indexOf(mode).coerceAtLeast(0)
+    val options = listOf(
+        "AUTO" to stringResource(id = R.string.mode_auto),
+        "MANUAL" to stringResource(id = R.string.mode_manual)
+    )
+    val selectedIndex = if (mode == null) -1 else options.indexOfFirst { it.first == mode }.coerceAtLeast(0)
 
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -297,17 +340,17 @@ private fun ControlsCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Ovládání", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(id = R.string.controls_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                options.forEachIndexed { index, label ->
+                options.forEachIndexed { index, option ->
                     SegmentedButton(
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                        onClick = { onModeSelected(label) },
+                        onClick = { onModeSelected(option.first) },
                         selected = selectedIndex == index,
                         enabled = mode != null
                     ) {
-                        Text(label)
+                        Text(option.second)
                     }
                 }
             }
@@ -317,11 +360,11 @@ private fun ControlsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Bypass")
+                Text(stringResource(id = R.string.controls_bypass))
                 Switch(
                     checked = bypass,
                     onCheckedChange = onBypassChanged,
-                    enabled = mode != null && !pumpRunning && mode != "MANUAL"
+                    enabled = mode != null && !pumpRunning
                 )
             }
 
@@ -330,7 +373,7 @@ private fun ControlsCard(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = mode == "MANUAL" && !pumpRunning
             ) {
-                Text("Spustit čerpadlo")
+                Text(stringResource(id = R.string.controls_start_pump))
             }
 
             Button(
@@ -338,7 +381,7 @@ private fun ControlsCard(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = mode == "MANUAL" && pumpRunning
             ) {
-                Text("Zastavit čerpadlo")
+                Text(stringResource(id = R.string.controls_stop_pump))
             }
         }
     }

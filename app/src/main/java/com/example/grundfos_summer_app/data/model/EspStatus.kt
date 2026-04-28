@@ -12,10 +12,19 @@ data class EspPumpStatus(
     val running: Boolean,
     @SerializedName("test_phase") val testPhase: Boolean,
     @SerializedName("pulse_ok") val pulseOk: Boolean,
-    @SerializedName("pulse_frequency_hz") val pulseFrequencyHz: Int,
+    @SerializedName("pulse_frequency_hz") val pulseFrequencyHz: Double,
     @SerializedName("pulse_count_last_minute") val pulseCountLastMinute: Long,
-    @SerializedName("pulse_stability") val pulseStability: Int
-)
+    @SerializedName("pulse_stability") val pulseStability: Double,
+    @SerializedName("period_ms") val periodMs: Double? = null,
+    @SerializedName("high_ms") val highMs: Double? = null,
+    @SerializedName("duty_percent") val dutyPercent: Double? = null,
+    @SerializedName("interpreted_state") val interpretedStateRaw: String? = null,
+    @SerializedName("valid_frequency") val validFrequency: Boolean? = null,
+    val timestamp: Long? = null
+) {
+    val interpretedState: PumpInterpretedState
+        get() = PumpInterpretedState.fromApi(interpretedStateRaw)
+}
 
 data class EspSchedule(
     @SerializedName("start_hour") val startHour: Int,

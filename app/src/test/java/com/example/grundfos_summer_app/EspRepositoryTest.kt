@@ -1,17 +1,17 @@
 package com.example.grundfos_summer_app
 
-import com.example.grundfos_summer_app.data.model.EspErrors
-import com.example.grundfos_summer_app.data.model.EspPumpStatus
 import com.example.grundfos_summer_app.data.model.ProvisioningRequest
-import com.example.grundfos_summer_app.data.model.EspStatus
-import com.example.grundfos_summer_app.data.model.EspNetworkInfo
+import com.example.grundfos_summer_app.data.remote.ApiAckDto
 import com.example.grundfos_summer_app.data.remote.EspApiService
+import com.example.grundfos_summer_app.data.remote.EspHeartbeatDto
+import com.example.grundfos_summer_app.data.remote.EspNetworkInfoDto
+import com.example.grundfos_summer_app.data.remote.EspPumpStatusDto
+import com.example.grundfos_summer_app.data.remote.EspStatusDto
+import com.example.grundfos_summer_app.data.remote.EspErrorsDto
 import com.example.grundfos_summer_app.data.repository.EspRepository
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody
 import okhttp3.ResponseBody.Companion.toResponseBody
-import okio.Buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,7 +20,7 @@ import retrofit2.Response
 
 class EspRepositoryTest {
     @Test
-    fun getStatus_fallsBackToMdnsAndSwitchesPrimaryToNewIp() = runBlocking {
+    fun getStatus_usesPrimaryOnly_withoutMdnsFallback() = runBlocking {
         val primaryApi = FakeEspApiService(
             statusResults = mutableListOf(Result.failure(IOException("Primary unreachable")))
         )
@@ -43,14 +43,12 @@ class EspRepositoryTest {
         )
 
         val firstStatus = repository.getStatus()
-        val secondStatus = repository.getStatus()
 
-        assertTrue(firstStatus.isSuccess)
-        assertTrue(secondStatus.isSuccess)
+        assertTrue(firstStatus.isFailure)
         assertEquals(1, primaryApi.statusCalls)
-        assertEquals(1, mdnsApi.statusCalls)
-        assertEquals(1, newPrimaryApi.statusCalls)
-        assertEquals(listOf("http://10.66.12.250/"), createdBaseUrls)
+        assertEquals(0, mdnsApi.statusCalls)
+        assertEquals(0, newPrimaryApi.statusCalls)
+        assertTrue(createdBaseUrls.isEmpty())
     }
 
     @Test
@@ -70,47 +68,62 @@ class EspRepositoryTest {
     }
 
     @Test
-    fun provisioningThenStatusRecovery_switchesBackToIpAfterMdnsDiscovery() = runBlocking {
-        val primaryApi = FakeEspApiService(
-            statusResults = mutableListOf(Result.failure(IOException("Old IP unreachable")))
+    fun submitProvisioning_fallsBackToPrimaryApWhenMdnsUnavailable() = runBlocking {
+        // Provisioning AP (primary when mDNS/provisioning API is unavailable)
+        val primaryApApi = FakeEspApiService(
+            provisioningResponses = mutableListOf(Response.success(ApiAckDto(ok = true)))
         )
         val mdnsApi = FakeEspApiService(
-            statusResults = mutableListOf(Result.success(statusWithIp("10.66.12.251")))
+            provisioningResponses = mutableListOf(
+                Response.error(503, "{\"error\":\"unavailable\"}".toResponseBody(JSON))
+            )
         )
-        val newPrimaryApi = FakeEspApiService(
-            statusResults = mutableListOf(Result.success(statusWithIp("10.66.12.251")))
-        )
-        val createdBaseUrls = mutableListOf<String>()
         val repository = EspRepository(
-            api = primaryApi,
+            api = primaryApApi,
             provisioningApi = mdnsApi,
-            primaryBaseUrl = "http://10.66.12.184/",
-            apiFactory = { baseUrl ->
-                createdBaseUrls += baseUrl
-                newPrimaryApi
-            }
+            primaryBaseUrl = "http://10.66.12.184/"
         )
 
-        val provisioningResult = repository.submitProvisioning("MojeWifi", "tajneheslo")
-        val firstStatus = repository.getStatus()
-        val secondStatus = repository.getStatus()
+        val result = repository.submitProvisioning("MojeWifi", "tajneheslo")
 
-        assertTrue(provisioningResult.isSuccess)
-        assertTrue(firstStatus.isSuccess)
-        assertTrue(secondStatus.isSuccess)
+        assertTrue(result.isSuccess)
         assertEquals(1, mdnsApi.provisionRequests.size)
-        assertEquals(1, primaryApi.statusCalls)
-        assertEquals(1, mdnsApi.statusCalls)
-        assertEquals(1, newPrimaryApi.statusCalls)
-        assertEquals(listOf("http://10.66.12.251/"), createdBaseUrls)
+        assertEquals(1, primaryApApi.provisionRequests.size)
+    }
+
+    @Test
+    fun updatePrimaryUrl_switchesApiToNewIp() = runBlocking {
+        val oldApi = FakeEspApiService(
+            statusResults = mutableListOf(Result.failure(IOException("Old IP unreachable")))
+        )
+        val newApi = FakeEspApiService(
+            statusResults = mutableListOf(Result.success(statusWithIp("10.66.12.99")))
+        )
+        val createdUrls = mutableListOf<String>()
+        val repository = EspRepository(
+            api = oldApi,
+            primaryBaseUrl = "http://10.66.12.184/",
+            apiFactory = { url -> createdUrls += url; newApi }
+        )
+
+        // Before update: uses old (failing) api
+        val before = repository.getStatus()
+        assertTrue(before.isFailure)
+
+        // Simulate NSD discovery returning new IP
+        repository.updatePrimaryUrl("http://10.66.12.99/")
+
+        // After update: uses new api
+        val after = repository.getStatus()
+        assertTrue(after.isSuccess)
+        assertEquals(listOf("http://10.66.12.99/"), createdUrls)
     }
 
     @Test
     fun setMode_triesStateFallbackAfter400() = runBlocking {
         val api = FakeEspApiService(
             modeResponses = mutableListOf(
-                Response.error(400, "{\"ok\":false}".toResponseBody(JSON)),
-                Response.success(Unit)
+                Response.success(ApiAckDto(ok = true))
             )
         )
         val repository = EspRepository(api)
@@ -118,15 +131,14 @@ class EspRepositoryTest {
         val result = repository.setMode("AUTO")
 
         assertTrue(result.isSuccess)
-        assertEquals(listOf("{\"mode\":\"AUTO\"}", "{\"mode\":\"AUTO_MODE\"}"), api.modeBodies)
+        assertEquals(listOf(mapOf("mode" to "AUTO")), api.modeBodies)
     }
 
     @Test
-    fun setBypass_triesEnabledFallbackAfter400() = runBlocking {
+    fun setBypass_sendsFirmwarePayload() = runBlocking {
         val api = FakeEspApiService(
             bypassResponses = mutableListOf(
-                Response.error(400, "{\"ok\":false}".toResponseBody(JSON)),
-                Response.success(Unit)
+                Response.success(ApiAckDto(ok = true))
             )
         )
         val repository = EspRepository(api)
@@ -134,14 +146,14 @@ class EspRepositoryTest {
         val result = repository.setBypass(true)
 
         assertTrue(result.isSuccess)
-        assertEquals(listOf("{\"bypass\":true}", "{\"enabled\":true}"), api.bypassBodies)
+        assertEquals(listOf(mapOf("bypass" to true)), api.bypassBodies)
     }
 
     @Test
     fun submitProvisioning_returnsFriendlyMessageOn400() = runBlocking {
         val api = FakeEspApiService(
             provisioningResponses = mutableListOf(
-                Response.error(400, "{\"ok\":false}".toResponseBody(JSON))
+                Response.error(400, "{\"error\":\"ssid_empty\"}".toResponseBody(JSON))
             )
         )
         val repository = EspRepository(api)
@@ -157,17 +169,21 @@ class EspRepositoryTest {
     }
 
     private class FakeEspApiService(
-        private val statusResults: MutableList<Result<EspStatus>> = mutableListOf(Result.success(statusWithIp("10.66.12.184"))),
-        private val modeResponses: MutableList<Response<Unit>> = mutableListOf(Response.success(Unit)),
-        private val bypassResponses: MutableList<Response<Unit>> = mutableListOf(Response.success(Unit)),
-        private val provisioningResponses: MutableList<Response<Unit>> = mutableListOf(Response.success(Unit))
+        private val statusResults: MutableList<Result<EspStatusDto>> = mutableListOf(Result.success(statusWithIp("10.66.12.184"))),
+        private val modeResponses: MutableList<Response<ApiAckDto>> = mutableListOf(Response.success(ApiAckDto(ok = true))),
+        private val bypassResponses: MutableList<Response<ApiAckDto>> = mutableListOf(Response.success(ApiAckDto(ok = true))),
+        private val provisioningResponses: MutableList<Response<ApiAckDto>> = mutableListOf(Response.success(ApiAckDto(ok = true)))
     ) : EspApiService {
         var statusCalls = 0
-        val modeBodies = mutableListOf<String>()
-        val bypassBodies = mutableListOf<String>()
+        val modeBodies = mutableListOf<Map<String, String>>()
+        val bypassBodies = mutableListOf<Map<String, Boolean>>()
         val provisionRequests = mutableListOf<ProvisioningRequest>()
 
-        override suspend fun getStatus(): EspStatus {
+        override suspend fun getHeartbeat(): Response<EspHeartbeatDto> {
+            return Response.success(EspHeartbeatDto(state = "AUTO_MODE"))
+        }
+
+        override suspend fun getStatus(): Response<EspStatusDto> {
             statusCalls++
             val result = if (statusResults.isNotEmpty()) {
                 statusResults.removeAt(0)
@@ -175,59 +191,62 @@ class EspRepositoryTest {
                 Result.success(statusWithIp("10.66.12.184"))
             }
 
-            return result.getOrElse { throw it }
+            return result.fold(
+                onSuccess = { Response.success(it) },
+                onFailure = { throw it }
+            )
         }
 
-        override suspend fun setMode(body: RequestBody): Response<Unit> {
-            modeBodies += readBody(body)
+        override suspend fun getBypass(): Response<Map<String, Boolean>> = Response.success(mapOf("bypass" to false))
+
+        override suspend fun getLog(): Response<Map<String, Any>> = Response.success(emptyMap())
+
+        override suspend fun getDiagPing(): Response<Map<String, Any>> = Response.success(emptyMap())
+
+        override suspend fun getDiagNetwork(): Response<Map<String, Any>> = Response.success(emptyMap())
+
+        override suspend fun setMode(body: Map<String, String>): Response<ApiAckDto> {
+            modeBodies += body
             return modeResponses.removeAt(0)
         }
 
-        override suspend fun setBypass(body: RequestBody): Response<Unit> {
-            bypassBodies += readBody(body)
+        override suspend fun setBypass(body: Map<String, Boolean>): Response<ApiAckDto> {
+            bypassBodies += body
             return bypassResponses.removeAt(0)
         }
 
-        override suspend fun provision(request: ProvisioningRequest): Response<Unit> {
+        override suspend fun provision(request: ProvisioningRequest): Response<ApiAckDto> {
             provisionRequests += request
             return provisioningResponses.removeAt(0)
         }
 
-        override suspend fun pumpStart(): Response<Unit> = Response.success(Unit)
+        override suspend fun pumpStart(): Response<ApiAckDto> = Response.success(ApiAckDto(ok = true))
 
-        override suspend fun pumpStop(): Response<Unit> = Response.success(Unit)
+        override suspend fun pumpStop(): Response<ApiAckDto> = Response.success(ApiAckDto(ok = true))
 
-        override suspend fun saveSchedule(body: RequestBody): Response<Unit> = Response.success(Unit)
+        override suspend fun saveSchedule(body: Map<String, Int>): Response<ApiAckDto> = Response.success(ApiAckDto(ok = true))
 
-        override suspend fun resetErrors(): Response<Unit> = Response.success(Unit)
-
-        override suspend fun resetPumpError(body: RequestBody): Response<Unit> = Response.success(Unit)
+        override suspend fun resetPumpError(): Response<ApiAckDto> = Response.success(ApiAckDto(ok = true))
     }
 
     companion object {
         private val JSON = "application/json".toMediaType()
 
-        private fun statusWithIp(ip: String?): EspStatus = EspStatus(
+        private fun statusWithIp(ip: String?): EspStatusDto = EspStatusDto(
             state = "AUTO_MODE",
             mode = "AUTO",
             bypass = false,
-            errors = EspErrors(false, false, false),
-            pump = EspPumpStatus(
+            errors = EspErrorsDto(false, false, false),
+            pump = EspPumpStatusDto(
                 running = false,
                 testPhase = false,
                 pulseOk = false,
-                pulseFrequencyHz = 0,
+                pulseFrequencyHz = 0.0,
                 pulseCountLastMinute = 0,
-                pulseStability = 0
+                pulseStability = 0.0
             ),
             ip = ip,
-            networkInfo = EspNetworkInfo(ip = ip)
+            networkInfo = EspNetworkInfoDto(ip = ip)
         )
-
-        private fun readBody(body: RequestBody): String {
-            val buffer = Buffer()
-            body.writeTo(buffer)
-            return buffer.readUtf8()
-        }
     }
 }
