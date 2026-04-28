@@ -132,8 +132,20 @@ fun MainScreen(
                 }
 
                 item {
+                    val displayMode = if (uiState.isConnectionLost) "ODPOJENO" else {
+                        val baseMode = uiState.status?.mode ?: "–"
+                        uiState.status?.let { status ->
+                            if (baseMode == "AUTO" && status.schedule != null) {
+                                val schedule = status.schedule
+                                "AUTO (${schedule.startHour.toString().padStart(2, '0')}:${schedule.startMinute.toString().padStart(2, '0')})"
+                            } else {
+                                baseMode
+                            }
+                        } ?: baseMode
+                    }
                     StatusCard(
-                        mode = if (uiState.isConnectionLost) stringResource(id = R.string.main_disconnected) else (uiState.status?.mode ?: stringResource(id = R.string.main_unknown_value)),
+                        mode = displayMode,
+                        baseMode = if (uiState.isConnectionLost) stringResource(id = R.string.main_disconnected) else (uiState.status?.mode ?: stringResource(id = R.string.main_unknown_value)),
                         pumpRunning = if (uiState.isConnectionLost) false else (uiState.status?.pump?.running == true),
                         feedbackStable = if (uiState.isConnectionLost) false else (uiState.status?.pump?.pulseOk == true),
                         pumpDutyPercent = if (uiState.isConnectionLost) null else uiState.status?.pump?.dutyPercent,
@@ -231,6 +243,7 @@ private fun TechnicalButton(
 @Composable
 private fun StatusCard(
     mode: String,
+    baseMode: String,
     pumpRunning: Boolean,
     feedbackStable: Boolean,
     pumpDutyPercent: Double?,
@@ -262,7 +275,7 @@ private fun StatusCard(
                         text = mode,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = when (mode) {
+                        color = when (baseMode) {
                             "AUTO" -> if (pumpError) Color.Red else Color(0xFF388E3C)
                             "MANUAL" -> Color(0xFF1565C0)
                             else -> Color.Unspecified
