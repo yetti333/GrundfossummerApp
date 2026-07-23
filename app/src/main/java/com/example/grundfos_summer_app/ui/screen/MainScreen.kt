@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -154,13 +153,7 @@ fun MainScreen(
                         timeError = uiState.status?.errors?.time == true,
                         pumpError = uiState.status?.errors?.pump == true,
                         onPumpDetailsClick = onNavigateToPumpDetails,
-                        onWifiErrorClick = {
-                            if (uiState.isConnectionLost) {
-                                viewModel.resetConnectionTimeout()
-                            }
-                            onNavigateToProvisioning()
-                        },
-                        onPumpErrorClick = viewModel::resetPumpError,
+                        onResetErrorsClick = viewModel::resetErrors,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
@@ -252,8 +245,7 @@ private fun StatusCard(
     timeError: Boolean,
     pumpError: Boolean,
     onPumpDetailsClick: () -> Unit,
-    onWifiErrorClick: () -> Unit,
-    onPumpErrorClick: () -> Unit,
+    onResetErrorsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
@@ -308,21 +300,45 @@ private fun StatusCard(
             )
             IconRow(stringResource(id = R.string.status_bypass_active), bypass)
 
-            Text(stringResource(id = R.string.status_errors), style = MaterialTheme.typography.bodyMedium)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ErrorChip(
-                    label = stringResource(id = R.string.error_wifi),
-                    isError = wifiError,
-                    onClick = onWifiErrorClick,
-                    modifier = Modifier.weight(1f)
-                )
-                ErrorChip(label = stringResource(id = R.string.error_time), isError = timeError, modifier = Modifier.weight(1f))
-                ErrorChip(
-                    label = stringResource(id = R.string.error_pump),
-                    isError = pumpError,
-                    onClick = onPumpErrorClick,
-                    modifier = Modifier.weight(1f)
-                )
+            val systemMessages = buildList {
+                if (wifiError) add(stringResource(id = R.string.error_wifi))
+                if (timeError) add(stringResource(id = R.string.error_time))
+                if (pumpError) add(stringResource(id = R.string.error_pump))
+            }
+            val hasSystemErrors = systemMessages.isNotEmpty()
+            if (hasSystemErrors) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    systemMessages.forEach { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(id = R.string.status_all_systems_ok),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF388E3C),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            if (hasSystemErrors) {
+                OutlinedButton(
+                    onClick = onResetErrorsClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = stringResource(id = R.string.status_reset_errors),
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -446,25 +462,3 @@ private fun IconRow(label: String, active: Boolean, animated: Boolean = false) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ErrorChip(
-    label: String, 
-    isError: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit = {}
-) {
-    AssistChip(
-        onClick = onClick,
-        label = { Text(modifier = Modifier.fillMaxWidth(), text = label, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center) },
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = if (isError) Color(0xFFFDECEA) else Color(0xFFF5F5F5),
-            labelColor = if (isError) Color(0xFFD32F2F) else Color.Gray
-        ),
-        border = AssistChipDefaults.assistChipBorder(
-            enabled = true,
-            borderColor = if (isError) Color(0xFFEF9A9A) else Color.LightGray
-        ),
-        modifier = modifier
-    )
-}

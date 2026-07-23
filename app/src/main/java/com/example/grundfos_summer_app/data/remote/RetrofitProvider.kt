@@ -29,10 +29,31 @@ object RetrofitProvider {
         .readTimeout(3, TimeUnit.SECONDS)
         .build()
 
+    /**
+     * Provisioning runs over ESP AP and can be slower while Android resolves routes.
+     * Use a dedicated client so normal polling remains fast.
+     */
+    private val provisioningHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(JsonHeadersInterceptor())
+        .addInterceptor(EspApiLoggingInterceptor(tagSuffix = "_PROVISION"))
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .writeTimeout(8, TimeUnit.SECONDS)
+        .build()
+
     fun buildRetrofit(baseUrl: String): EspApiService {
         return Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(sharedHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(EspApiService::class.java)
+    }
+
+    fun buildProvisioningRetrofit(baseUrl: String): EspApiService {
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(provisioningHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(EspApiService::class.java)
@@ -52,16 +73,21 @@ object RetrofitProvider {
         }
     }
 
-    private class EspApiLoggingInterceptor : Interceptor {
+    private class EspApiLoggingInterceptor(
+        private val tagSuffix: String = ""
+    ) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
             val requestPath = request.url.encodedPath
+            val requestUrl = request.url.toString()
             val requestBody = request.body?.let { bodyToString(request, it.contentType()) }
+            val payloadLength = requestBody?.toByteArray(Charsets.UTF_8)?.size ?: 0
             val startedAtMs = System.currentTimeMillis()
+            val logTag = LOG_TAG + tagSuffix
 
             Log.d(
-                LOG_TAG,
-                "--> ${request.method} $requestPath body=${maskSensitive(requestBody)}"
+                logTag,
+                "--> ${request.method} $requestPath url=$requestUrl payloadBytes=$payloadLength body=${maskSensitive(requestBody)}"
             )
 
             return try {
@@ -69,14 +95,14 @@ object RetrofitProvider {
                 val durationMs = System.currentTimeMillis() - startedAtMs
                 val responseBody = response.peekBody(Long.MAX_VALUE).string()
                 Log.d(
-                    LOG_TAG,
+                    logTag,
                     "<-- ${response.code} ${request.method} $requestPath (${durationMs}ms) body=${maskSensitive(responseBody)}"
                 )
                 response
             } catch (e: IOException) {
                 val durationMs = System.currentTimeMillis() - startedAtMs
                 Log.e(
-                    LOG_TAG,
+                    logTag,
                     "xx> ${request.method} $requestPath FAILED (${durationMs}ms): ${e.message}",
                     e
                 )
@@ -84,7 +110,7 @@ object RetrofitProvider {
             } catch (e: Exception) {
                 val durationMs = System.currentTimeMillis() - startedAtMs
                 Log.e(
-                    LOG_TAG,
+                    logTag,
                     "xx> ${request.method} $requestPath ERROR (${durationMs}ms): ${e.message}",
                     e
                 )

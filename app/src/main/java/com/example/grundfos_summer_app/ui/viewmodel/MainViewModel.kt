@@ -1,6 +1,9 @@
 package com.example.grundfos_summer_app.ui.viewmodel
 
 import android.app.Application
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -60,12 +63,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastWifiError = false
     private var lastTimeError = false
     private var lastPumpError = false
+    @Volatile private var isProvisioningFlowActive = false
 
     /** Guard against launching multiple concurrent NSD discoveries. */
     @Volatile private var isDiscovering = false
 
     private val ipStore = DeviceIpStore(application)
     private val nsdDiscovery = NsdDiscovery(application)
+    private val connectivityManager =
+        application.getSystemService(ConnectivityManager::class.java)
 
     private companion object {
         private const val TAG = "ESP_API"
@@ -82,7 +88,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: EspRepository = EspRepository(
         api = RetrofitProvider.buildRetrofit(INITIAL_BASE_URL),
-        provisioningApi = RetrofitProvider.buildRetrofit(PROVISIONING_AP_URL),
+        provisioningApi = RetrofitProvider.buildProvisioningRetrofit(PROVISIONING_AP_URL),
         primaryBaseUrl = INITIAL_BASE_URL,
         apiFactory = RetrofitProvider::buildRetrofit
     )
@@ -94,7 +100,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // Phase 2: polling loop – every 2 s as recommended by the ESP reference
             while (true) {
-                refreshStatusInternal(showLoading = _uiState.value.status == null)
+                if (!isProvisioningFlowActive) {
+                    refreshStatusInternal(showLoading = _uiState.value.status == null)
+                }
                 delay(POLL_INTERVAL_MS)
             }
         }
@@ -109,7 +117,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.updatePrimaryUrl(cachedUrl)
         } else {
             Log.d(TAG, "Startup: no cached IP, running NSD discovery")
-            addLog("Hledám ESP v síti (NSD)...", false)
+            addLog("Hledám Grundfos v síti (NSD)...", false)
             runNsdDiscovery()
         }
     }
@@ -121,13 +129,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun runNsdDiscovery() {
         val ip = nsdDiscovery.discoverEspIp(timeoutMs = 6000L)
         if (ip != null) {
-            Log.d(TAG, "NSD: discovered ESP at $ip")
+            Log.d(TAG, "NSD: discovered Grundfos at $ip")
             ipStore.cachedIp = ip
             repository.updatePrimaryUrl("http://$ip/")
-            addLog("ESP nalezeno na IP $ip", false)
+            addLog("Grundfos nalezeno na IP $ip", false)
         } else {
             Log.w(TAG, "NSD: discovery timed out / no service found")
-            addLog("NSD: ESP nenalezeno v síti", true)
+            addLog("NSD: Grundfos nenalezeno v síti", true)
         }
     }
 
@@ -140,7 +148,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isDiscovering = true
         viewModelScope.launch {
             try {
-                addLog("Obnovuji připojení – hledám ESP v síti...", false)
+                addLog("Obnovuji připojení – hledám Grundfos v síti...", false)
                 runNsdDiscovery()
                 // Reset retry counter so the next poll attempt is treated as a fresh start
                 retryCount = 0
@@ -324,6 +332,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            isProvisioningFlowActive = true
             _uiState.update {
                 it.copy(
                     isProvisioningSubmitting = true,
@@ -332,34 +341,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            repository.submitProvisioning(trimmedSsid, password)
-                .onSuccess {
-                    addLog("Provisioning Wi\u2011Fi byl odeslán pro síť $trimmedSsid", false)
-                    _uiState.update { currentState ->
-                        currentState.copy(
-                            isProvisioningSubmitting = false,
-                            provisioningSuccessMessage = "Přihlašovací údaje byly odeslány. Zařízení se nyní pokusí připojit k zadané síti.",
-                            errorMessage = null
-                        )
+            val previouslyBoundNetwork = connectivityManager?.boundNetworkForProcess
+            val boundWifiNetwork = bindToWifiNetworkForProvisioning()
+
+            try {
+                repository.submitProvisioning(trimmedSsid, password)
+                    .onSuccess {
+                        addLog("Provisioning Wi\u2011Fi byl odeslán pro síť $trimmedSsid", false)
+                        _uiState.update { currentState ->
+                            currentState.copy(
+                                provisioningSuccessMessage = "Přihlašovací údaje byly odeslány. Zařízení se nyní pokusí připojit k zadané síti.",
+                                errorMessage = null
+                            )
+                        }
+                        // Clear cached IP – device restarts and may get a new DHCP IP.
+                        ipStore.cachedIp = null
+                        // ESP restarts shortly after ack; transient disconnect is expected.
+                        delay(1000)
+                        addLog("Hledám Grundfos v nové síti po provisioningu...", false)
+                        runNsdDiscovery()
+                        refreshStatusInternal(showLoading = false)
                     }
-                    // Clear cached IP – device restarts and may get a new DHCP IP
-                    ipStore.cachedIp = null
-                    delay(1000)
-                    // Re-discover the device on the home network after provisioning
-                    addLog("Hledám ESP v nové síti po provisioningu...", false)
-                    runNsdDiscovery()
-                    refreshStatusInternal(showLoading = false)
-                }
-                .onFailure {
-                    addLog("Chyba při provisioningu: ${it.message}", true)
-                    _uiState.update { currentState ->
-                        currentState.copy(
-                            isProvisioningSubmitting = false,
-                            errorMessage = it.message ?: "Provisioning se nezdařil."
-                        )
+                    .onFailure {
+                        addLog("Chyba při provisioningu: ${it.message}", true)
+                        _uiState.update { currentState ->
+                            currentState.copy(
+                                errorMessage = it.message ?: "Provisioning se nezdařil."
+                            )
+                        }
                     }
-                }
+            } finally {
+                restoreNetworkBinding(previouslyBoundNetwork, boundWifiNetwork)
+                isProvisioningFlowActive = false
+                _uiState.update { it.copy(isProvisioningSubmitting = false) }
+            }
         }
+    }
+
+    private fun bindToWifiNetworkForProvisioning(): Network? {
+        val manager = connectivityManager ?: return null
+        val wifiNetwork = manager.allNetworks.firstOrNull { network ->
+            val capabilities = manager.getNetworkCapabilities(network)
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+        } ?: manager.allNetworks.firstOrNull { network ->
+            manager.getNetworkCapabilities(network)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+
+        if (wifiNetwork == null) {
+            Log.w(TAG, "Provisioning: no Wi-Fi network available for bind")
+            return null
+        }
+
+        val bindResult = manager.bindProcessToNetwork(wifiNetwork)
+        Log.d(TAG, "Provisioning: bindProcessToNetwork result=$bindResult network=$wifiNetwork")
+        return if (bindResult) wifiNetwork else null
+    }
+
+    private fun restoreNetworkBinding(previouslyBound: Network?, currentlyBoundForProvisioning: Network?) {
+        val manager = connectivityManager ?: return
+        if (currentlyBoundForProvisioning == null) {
+            return
+        }
+        val restored = manager.bindProcessToNetwork(previouslyBound)
+        Log.d(TAG, "Provisioning: restore network binding result=$restored previous=$previouslyBound")
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
@@ -372,7 +418,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.getStatus()
             .onSuccess { status ->
                 if (retryCount >= maxRetries) {
-                    addLog("Připojení k ESP obnoveno", false)
+                    addLog("Připojení k Grundfos obnoveno", false)
                 }
                 retryCount = 0
 
@@ -414,7 +460,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val isLost = retryCount >= maxRetries
 
                 if (isLost && !wasLost) {
-                    addLog("Kritické: Spojení s ESP modulem přerušeno (${throwable.message})", true)
+                    addLog("Kritické: Spojení s Grundfos přerušeno (${throwable.message})", true)
                     // Reference: on IOException/timeout retry once → re-run NSD discovery
                     triggerBackgroundRediscovery()
                 }
@@ -422,7 +468,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = if (isLost) "Připojení k ESP ztraceno" else throwable.message,
+                        errorMessage = if (isLost) "Připojení k Grundfos ztraceno" else throwable.message,
                         isConnectionLost = isLost,
                         isProvisioningRequired = computeProvisioningRequired(
                             status = it.status,

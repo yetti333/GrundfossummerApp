@@ -9,6 +9,21 @@ android {
         version = release(36) {
             minorApiLevel = 1
         }
+        signingConfigs {
+            create("release") {
+                storeFile =
+                    file("C:\\Users\\Martin\\AndroidStudioProjects\\GrundfossummerApp\\release-key.jks")
+                storePassword = "jettijetti"
+                keyAlias = "release"
+                keyPassword = "jettijetti"
+            }
+        }
+        buildTypes {
+             getByName("release") {
+                 isMinifyEnabled = false
+                 signingConfig = signingConfigs.getByName("release")
+                }
+        }
     }
 
     defaultConfig {
@@ -16,7 +31,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
