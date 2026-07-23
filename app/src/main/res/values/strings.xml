@@ -11,7 +11,7 @@
     <string name="status_mode">Režim:</string>
     <string name="status_pump_running">Čerpadlo běží:</string>
     <string name="status_feedback_stable">Zpětná vazba stabilní:</string>
-    <string name="status_pump_power">Duty cycle čerpadla:</string>
+    <string name="status_pump_power">Výkon čerpadla:</string>
     <string name="status_bypass_active">Bypass aktivní:</string>
     <string name="status_errors">Systémová hlášení:</string>
 
